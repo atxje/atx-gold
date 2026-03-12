@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --use-npm --yes)",
+      "Bash(npm install:*)",
+      "Bash(npx prisma init:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx prisma db push)",
+      "Bash(curl:*)",
+      "Bash(npx prisma studio:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(ping:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 15196 -Force\")",
+      "Bash(powershell -Command:*)",
+      "Bash(tasklist:*)",
+      "Bash(npx prisma:*)",
+      "Bash(node:*)",
+      "Bash(wmic process:*)",
+      "Bash(cmd:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx:*)",
+      "Bash(ls .env*:*)",
+      "Bash(npx next:*)",
+      "WebSearch",
+      "WebFetch(domain:raptech.rapaport.com)",
+      "WebFetch(domain:technet.rapaport.com)",
+      "WebFetch(domain:help.rapnet.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s http://localhost:3000/api/categories | python -c \"import sys, json; cats = json.load\\(sys.stdin\\); [print\\(f\\\\\"{c['name']} \\({c['metalType']}\\)\\\\\"\\) for c in cats]\" 2>&1 || echo \"Server may not be running\")"
+    ]
+  }
+}

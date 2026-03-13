@@ -15,6 +15,8 @@ interface InvoiceItem {
   weightUnit: string
   pricePerUnit: number
   totalPrice: number
+  costBasis: number
+  profit: number
   inventoryItem: { id: string; name: string }
 }
 
@@ -52,6 +54,7 @@ export default function InvoicePage() {
   const [editNotes, setEditNotes] = useState("")
   const [editItems, setEditItems] = useState<{ id: string; description: string; pricePerUnit: string; totalPrice: string; lastEdited: "pricePerUnit" | "totalPrice" }[]>([])
   const [removedItemIds, setRemovedItemIds] = useState<string[]>([])
+  const [hideCost, setHideCost] = useState(false)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -177,7 +180,7 @@ export default function InvoicePage() {
                   className="px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
                   {cancelling ? "Cancelling…" : "Cancel Invoice"}
                 </button>
-                <button onClick={startEdit}
+                <button onClick={() => router.push(`/documents/invoices/new?editId=${id}`)}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
                   Edit
                 </button>
@@ -263,6 +266,12 @@ export default function InvoicePage() {
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Weight</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Price/Unit</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Amount</th>
+              {!hideCost && !editMode && (
+                <>
+                  <th className="print:hidden text-right py-2 text-sm font-semibold text-gray-700">Cost/Unit</th>
+                  <th className="print:hidden text-right py-2 text-sm font-semibold text-gray-700">Total Cost</th>
+                </>
+              )}
               {editMode && <th className="w-8" />}
             </tr>
           </thead>
@@ -300,6 +309,16 @@ export default function InvoicePage() {
                       </div>
                     ) : `$${item.totalPrice.toFixed(2)}`}
                   </td>
+                  {!hideCost && !editMode && (
+                    <>
+                      <td className="print:hidden py-3 text-sm text-gray-500 text-right">
+                        ${(item.weight > 0 ? item.costBasis / item.weight : 0).toFixed(2)}/{unit}
+                      </td>
+                      <td className="print:hidden py-3 text-sm text-gray-500 text-right">
+                        ${item.costBasis.toFixed(2)}
+                      </td>
+                    </>
+                  )}
                   {editMode && (
                     <td className="py-3 text-center">
                       <button type="button" onClick={() => removeEditItem(item.id)}
@@ -314,14 +333,40 @@ export default function InvoicePage() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={editMode ? 4 : 3} className="pt-4 text-right font-bold text-gray-900">Total</td>
-              <td className={`pt-4 text-right font-bold text-xl text-green-600 ${editMode ? "" : ""}`}>
+              <td colSpan={editMode ? 4 : (!hideCost ? 5 : 3)} className="pt-4 text-right font-bold text-gray-900">Total</td>
+              <td className="pt-4 text-right font-bold text-xl text-green-600">
                 ${(editMode ? editTotal : invoice.totalAmount).toFixed(2)}
               </td>
               {editMode && <td />}
             </tr>
+            {!hideCost && !editMode && (
+              <>
+                <tr className="print:hidden">
+                  <td colSpan={5} className="pt-1 text-right text-sm text-gray-500">Total Cost</td>
+                  <td className="pt-1 text-right text-sm text-gray-500">
+                    ${invoice.items.reduce((s, i) => s + i.costBasis, 0).toFixed(2)}
+                  </td>
+                </tr>
+                <tr className="print:hidden">
+                  <td colSpan={5} className="pt-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
+                  <td className="pt-1 text-right text-sm font-semibold text-gray-700">
+                    ${invoice.items.reduce((s, i) => s + i.profit, 0).toFixed(2)}
+                  </td>
+                </tr>
+              </>
+            )}
           </tfoot>
         </table>
+
+        {!editMode && (
+          <div className="print:hidden mb-4">
+            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+              <input type="checkbox" checked={hideCost} onChange={e => setHideCost(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              Hide cost and profit
+            </label>
+          </div>
+        )}
 
         {(invoice.notes || editMode) && (
           <div className="mb-8">

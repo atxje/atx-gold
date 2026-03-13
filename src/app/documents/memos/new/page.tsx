@@ -31,6 +31,20 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
     ? inventory
     : inventory.filter(i => i.name.toLowerCase().includes(query.toLowerCase()))
 
+  function subtitle(item: InventoryItem) {
+    if (item.diamondDetails) {
+      const d = item.diamondDetails
+      const parts = [d.shape, d.caratWeight ? `${d.caratWeight}ct` : "", d.color, d.clarity, item.itemCode].filter(Boolean)
+      return parts.length > 0 ? parts.join(" / ") : null
+    }
+    if (item.jewelryDetails) {
+      const j = item.jewelryDetails
+      const parts = [j.metal, j.brand, item.itemCode].filter(Boolean)
+      return parts.length > 0 ? parts.join(" / ") : null
+    }
+    return null
+  }
+
   return (
     <div ref={ref} className="relative min-w-[200px]">
       <input value={query}
@@ -42,13 +56,17 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
       />
       {open && filtered.length > 0 && (
         <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto min-w-[260px]">
-          {filtered.map(item => (
-            <div key={item.id} onMouseDown={() => { setQuery(item.name); setOpen(false); onChange(item.id) }}
-              className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${item.id === value ? "bg-blue-50 font-medium" : ""}`}>
-              <div className="font-medium text-gray-900">{item.name}</div>
-              <div className="text-xs text-gray-400">{item.availableWeight.toFixed(3)} {unitLabels[item.weightUnit]} available</div>
-            </div>
-          ))}
+          {filtered.map(item => {
+            const sub = subtitle(item)
+            return (
+              <div key={item.id} onMouseDown={() => { setQuery(item.name); setOpen(false); onChange(item.id) }}
+                className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${item.id === value ? "bg-blue-50 font-medium" : ""}`}>
+                <div className="font-medium text-gray-900">{item.name}</div>
+                {sub && <div className="text-xs text-gray-500">{sub}</div>}
+                <div className="text-xs text-gray-400">{item.availableWeight.toFixed(3)} {unitLabels[item.weightUnit]} available</div>
+              </div>
+            )
+          })}
         </div>
       )}
       {open && filtered.length === 0 && query && (
@@ -65,6 +83,12 @@ interface InventoryItem {
   name: string
   weightUnit: string
   availableWeight: number
+  totalCost: number
+  totalWeight: number
+  itemCode?: string | null
+  category?: string
+  diamondDetails?: { shape?: string; caratWeight?: number; color?: string; clarity?: string; lab?: string; certNumber?: string } | null
+  jewelryDetails?: { metal?: string; brand?: string; mainStone?: string } | null
 }
 
 interface Customer {
@@ -76,12 +100,15 @@ interface Customer {
 
 interface LineItem {
   id: number
+  dbId?: string
+  dbWeight?: number
   inventoryItemId: string
   description: string
   weight: string
   pricePerUnit: string
   totalValue: string
   lastEdited: "pricePerUnit" | "totalValue"
+  costPerUnit?: number
 }
 
 interface ColDef { key: string; label: string; removable: boolean; defaultVisible: boolean }
@@ -92,6 +119,8 @@ const ALL_COLUMNS: ColDef[] = [
   { key: "weight",      label: "Weight",      removable: false, defaultVisible: true },
   { key: "pricePerUnit",label: "Price/Unit",  removable: true,  defaultVisible: true },
   { key: "totalValue",  label: "Memo Value",  removable: false, defaultVisible: true },
+  { key: "costPerUnit", label: "Cost/Unit",   removable: false, defaultVisible: true },
+  { key: "totalCost",   label: "Total Cost",  removable: false, defaultVisible: true },
 ]
 
 const STORAGE_KEY = "memo-columns"
@@ -111,6 +140,7 @@ export default function NewMemoPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const editId = searchParams.get("editId")
 
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -120,18 +150,26 @@ export default function NewMemoPage() {
   const [customerName, setCustomerName] = useState("")
   const [customerEmail, setCustomerEmail] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
-  const [memoDate] = useState(new Date().toISOString().split("T")[0])
+  const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
+  const [memoDate, setMemoDate] = useState(new Date().toISOString().split("T")[0])
   const [returnDate, setReturnDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 10); return d.toISOString().split("T")[0]
   })
+  const [memoNumber, setMemoNumber] = useState("")
   const [notes, setNotes] = useState("")
   const [lineItems, setLineItems] = useState<LineItem[]>([newItem(1)])
   const [nextId, setNextId] = useState(2)
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(loadVisibleCols)
   const [showColMenu, setShowColMenu] = useState(false)
+  const [hideCost, setHideCost] = useState(false)
   const colMenuRef = useRef<HTMLDivElement>(null)
   const [focusLastRow, setFocusLastRow] = useState(false)
   const tableBodyRef = useRef<HTMLTableSectionElement>(null)
+  const [showDiamonds, setShowDiamonds] = useState(false)
+  const [showJewelry, setShowJewelry] = useState(false)
+  const [focusSection, setFocusSection] = useState<"regular" | "diamond" | "jewelry" | null>(null)
+  const diamondBodyRef = useRef<HTMLTableSectionElement>(null)
+  const jewelryBodyRef = useRef<HTMLTableSectionElement>(null)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -140,24 +178,74 @@ export default function NewMemoPage() {
   useEffect(() => {
     if (session) {
       const preselectedIds = searchParams.get("items")?.split(",").filter(Boolean) || []
-      Promise.all([
+      const fetches: Promise<unknown>[] = [
         fetch("/api/inventory").then(r => r.json()),
         fetch("/api/customers").then(r => r.json()),
-      ]).then(([inv, cust]: [InventoryItem[], Customer[]]) => {
+      ]
+      if (editId) fetches.push(fetch(`/api/memos/${editId}`).then(r => r.json()))
+      Promise.all(fetches).then((results) => {
+        const inv = results[0] as InventoryItem[]
+        const cust = results[1] as Customer[]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const memo = results[2] as any
         setInventory(inv)
         setCustomers(cust)
-        if (preselectedIds.length > 0) {
+
+        let loadedRows: LineItem[] | null = null
+        if (memo && editId) {
+          setCustomerName(memo.customerName)
+          setCustomerEmail(memo.customerEmail || "")
+          setCustomerPhone(memo.customerPhone || "")
+          setMemoDate(new Date(memo.memoDate).toISOString().split("T")[0])
+          setReturnDate(new Date(memo.returnDate).toISOString().split("T")[0])
+          setNotes(memo.notes || "")
+          setMemoNumber(memo.memoNumber)
+          const rows: LineItem[] = memo.items.map((item: { id: string; inventoryItemId: string; description: string; weight: number; pricePerUnit: number; totalValue: number; inventoryItem?: { totalCost: number; totalWeight: number } }, i: number) => {
+            const invFromMemo = item.inventoryItem
+            const invFromList = inv.find(x => x.id === item.inventoryItemId)
+            const cpu = invFromMemo && invFromMemo.totalWeight > 0
+              ? invFromMemo.totalCost / invFromMemo.totalWeight
+              : invFromList && invFromList.totalWeight > 0
+                ? invFromList.totalCost / invFromList.totalWeight
+                : 0
+            return {
+              id: i + 1,
+              dbId: item.id,
+              dbWeight: item.weight,
+              inventoryItemId: item.inventoryItemId,
+              description: item.description,
+              weight: item.weight.toString(),
+              pricePerUnit: item.pricePerUnit.toString(),
+              totalValue: item.totalValue.toString(),
+              lastEdited: "totalValue" as const,
+              costPerUnit: cpu,
+            }
+          })
+          setLineItems(rows)
+          setNextId(rows.length + 1)
+          setOriginalDbIds(memo.items.map((item: { id: string }) => item.id))
+          loadedRows = rows
+        } else if (preselectedIds.length > 0) {
           const rows = preselectedIds.map((id, i) => {
-            const item = inv.find((x: InventoryItem) => x.id === id)
+            const item = (inv as InventoryItem[]).find((x: InventoryItem) => x.id === id)
             if (!item) return newItem(i + 1)
             return { id: i + 1, inventoryItemId: id, description: item.name, weight: item.availableWeight.toString(), pricePerUnit: "", totalValue: "", lastEdited: "totalValue" as const }
           })
           setLineItems(rows)
           setNextId(rows.length + 1)
+          loadedRows = rows
+        }
+
+        // Auto-enable diamond/jewelry sections if loaded items belong to those categories
+        if (loadedRows) {
+          const hasDiamond = loadedRows.some(r => { const x = inv.find(i => i.id === r.inventoryItemId); return !!x?.diamondDetails })
+          const hasJewelry = loadedRows.some(r => { const x = inv.find(i => i.id === r.inventoryItemId); return !!x?.jewelryDetails })
+          if (hasDiamond) setShowDiamonds(true)
+          if (hasJewelry) setShowJewelry(true)
         }
       })
     }
-  }, [session, searchParams])
+  }, [session, searchParams, editId])
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -175,6 +263,17 @@ export default function NewMemoPage() {
       lastRow?.querySelector<HTMLInputElement>("input")?.focus()
     }
   }, [focusLastRow, lineItems])
+
+  useEffect(() => {
+    if (!focusSection) return
+    const ref = focusSection === "diamond" ? diamondBodyRef : focusSection === "jewelry" ? jewelryBodyRef : tableBodyRef
+    if (ref.current) {
+      setFocusSection(null)
+      const rows = ref.current.querySelectorAll("tr")
+      const lastRow = rows[rows.length - 1]
+      lastRow?.querySelector<HTMLInputElement>("input")?.focus()
+    }
+  }, [focusSection, lineItems])
 
   function toggleCol(key: string) {
     const next = { ...visibleCols, [key]: !visibleCols[key] }
@@ -203,8 +302,14 @@ export default function NewMemoPage() {
     setFocusLastRow(true)
   }
 
+  function addSectionItem(section: "regular" | "diamond" | "jewelry") {
+    setLineItems(prev => [...prev, newItem(nextId)])
+    setNextId(prev => prev + 1)
+    setFocusSection(section)
+  }
+
   function removeItem(id: number) {
-    if (lineItems.length > 1) setLineItems(lineItems.filter(i => i.id !== id))
+    if (lineItems.length > 1 || editId) setLineItems(lineItems.filter(i => i.id !== id))
   }
 
   function updateItem(id: number, field: keyof LineItem, value: string) {
@@ -252,32 +357,60 @@ export default function NewMemoPage() {
       for (const item of lineItems) {
         if (!item.inventoryItemId || !item.weight || !item.totalValue) throw new Error("Fill in all required item fields")
         const inv = inventory.find(i => i.id === item.inventoryItemId)
-        if (inv && parseFloat(item.weight) > inv.availableWeight) {
-          throw new Error(`Weight for "${inv.name}" exceeds available (${inv.availableWeight.toFixed(3)} ${unitLabels[inv.weightUnit]})`)
+        if (inv) {
+          // When editing, the item's original weight is already deducted from availableWeight, so add it back for comparison
+          const effectiveAvailable = inv.availableWeight + (item.dbWeight ?? 0)
+          if (parseFloat(item.weight) > effectiveAvailable) {
+            throw new Error(`Weight for "${inv.name}" exceeds available (${effectiveAvailable.toFixed(3)} ${unitLabels[inv.weightUnit]})`)
+          }
         }
       }
-      const res = await fetch("/api/memos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: selectedCustomerId || null,
-          customerName, customerEmail, customerPhone, memoDate, returnDate, notes,
-          items: lineItems.map(item => {
-            const inv = inventory.find(i => i.id === item.inventoryItemId)
-            return {
-              inventoryItemId: item.inventoryItemId,
+      if (editId) {
+        const keptDbIds = lineItems.filter(i => i.dbId).map(i => i.dbId!)
+        const removedIds = originalDbIds.filter(id => !keptDbIds.includes(id))
+        const res = await fetch(`/api/memos/${editId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerName, customerEmail, customerPhone, returnDate, notes,
+            removeItemIds: removedIds.length > 0 ? removedIds : undefined,
+            items: lineItems.filter(i => i.dbId).map(item => ({
+              id: item.dbId,
               description: item.description,
               weight: parseFloat(item.weight),
-              weightUnit: inv?.weightUnit || "GRAM",
               pricePerUnit: parseFloat(item.pricePerUnit) || 0,
               totalValue: parseFloat(item.totalValue),
-            }
+            })),
           }),
-        }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to create memo")
-      const memo = await res.json()
-      router.push(`/documents/memos/${memo.id}`)
+        })
+        if (!res.ok) throw new Error((await res.json()).error || "Failed to save memo")
+        const data = await res.json()
+        if (data.deleted) { router.push("/documents"); return }
+        router.push(`/documents/memos/${editId}`)
+      } else {
+        const res = await fetch("/api/memos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: selectedCustomerId || null,
+            customerName, customerEmail, customerPhone, memoDate, returnDate, notes,
+            items: lineItems.map(item => {
+              const inv = inventory.find(i => i.id === item.inventoryItemId)
+              return {
+                inventoryItemId: item.inventoryItemId,
+                description: item.description,
+                weight: parseFloat(item.weight),
+                weightUnit: inv?.weightUnit || "GRAM",
+                pricePerUnit: parseFloat(item.pricePerUnit) || 0,
+                totalValue: parseFloat(item.totalValue),
+              }
+            }),
+          }),
+        })
+        if (!res.ok) throw new Error((await res.json()).error || "Failed to create memo")
+        const memo = await res.json()
+        router.push(`/documents/memos/${memo.id}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -285,10 +418,129 @@ export default function NewMemoPage() {
     }
   }
 
-  const visibleDefs = ALL_COLUMNS.filter(c => visibleCols[c.key] !== false)
+  const costKeys = ["costPerUnit", "totalCost"]
+  const visibleDefs = ALL_COLUMNS.filter(c => visibleCols[c.key] !== false && (!costKeys.includes(c.key) || !hideCost))
   const cellClass = "border-r border-gray-200 last:border-r-0 px-2 py-1"
   const inputClass = "w-full px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50 rounded"
   const numInputClass = inputClass + " text-right"
+
+  // Inventory subsets for each section's combobox
+  const regularInventory = inventory.filter(i => !i.diamondDetails && !i.jewelryDetails)
+  const diamondInventory = inventory.filter(i => !!i.diamondDetails)
+  const jewelryInventory = inventory.filter(i => !!i.jewelryDetails)
+
+  // Compute 3 groups from single lineItems array
+  const regularItems = lineItems.filter(i => {
+    if (!i.inventoryItemId) return true // unassigned goes to regular
+    const inv = inventory.find(x => x.id === i.inventoryItemId)
+    return inv ? !inv.diamondDetails && !inv.jewelryDetails : true
+  })
+  const diamondItemsList = lineItems.filter(i => {
+    const inv = inventory.find(x => x.id === i.inventoryItemId)
+    return !!inv?.diamondDetails
+  })
+  const jewelryItemsList = lineItems.filter(i => {
+    const inv = inventory.find(x => x.id === i.inventoryItemId)
+    return !!inv?.jewelryDetails
+  })
+
+  function renderTableRows(items: LineItem[], sectionItems: LineItem[], sectionAddFn: () => void, tbodyRef: React.RefObject<HTMLTableSectionElement | null>) {
+    return items.map(item => {
+      const inv = inventory.find(i => i.id === item.inventoryItemId)
+      const unit = inv ? unitLabels[inv.weightUnit] || "g" : "g"
+      const isLastRow = item.id === sectionItems[sectionItems.length - 1]?.id
+      const lastColKey = visibleDefs[visibleDefs.length - 1].key
+      function tabProps(colKey: string) {
+        return {
+          onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+            arrowNav(e)
+            if (e.key === "Tab" && !e.shiftKey && isLastRow && colKey === lastColKey) { e.preventDefault(); sectionAddFn() }
+          }
+        }
+      }
+      return (
+        <tr key={item.id} className="hover:bg-gray-50 group">
+          {visibleDefs.map(col => (
+            <td key={col.key} className={`${cellClass} align-middle`}>
+              {col.key === "item" && (
+                <InventoryCombobox
+                  inventory={
+                    inv?.diamondDetails ? diamondInventory
+                    : inv?.jewelryDetails ? jewelryInventory
+                    : !item.inventoryItemId ? (
+                      // For unassigned items, show section-appropriate inventory
+                      tbodyRef === diamondBodyRef ? diamondInventory
+                      : tbodyRef === jewelryBodyRef ? jewelryInventory
+                      : regularInventory
+                    )
+                    : regularInventory
+                  }
+                  value={item.inventoryItemId}
+                  onChange={id => updateItem(item.id, "inventoryItemId", id)}
+                  onTabKey={isLastRow && lastColKey === "item" ? sectionAddFn : undefined}
+                />
+              )}
+              {col.key === "description" && (
+                <input value={item.description} placeholder="Description"
+                  onChange={e => updateItem(item.id, "description", e.target.value)}
+                  className={inputClass + " min-w-[140px]"} {...tabProps("description")} />
+              )}
+              {col.key === "weight" && (
+                <div className="flex items-center gap-1 min-w-[100px]">
+                  <input type="number" step="0.0001" required placeholder="0.000" value={item.weight}
+                    onChange={e => updateItem(item.id, "weight", e.target.value)}
+                    className={numInputClass} {...tabProps("weight")} />
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{unit}</span>
+                </div>
+              )}
+              {col.key === "pricePerUnit" && (
+                <div className="flex items-center gap-0.5 min-w-[110px]">
+                  <span className="text-gray-400 text-sm">$</span>
+                  <input type="number" step="0.0001" placeholder="0.00" value={item.pricePerUnit}
+                    onChange={e => updateItem(item.id, "pricePerUnit", e.target.value)}
+                    className={numInputClass} {...tabProps("pricePerUnit")} />
+                  <span className="text-xs text-gray-400">/{unit}</span>
+                </div>
+              )}
+              {col.key === "totalValue" && (
+                <div className="flex items-center gap-0.5 min-w-[100px]">
+                  <span className="text-gray-400 text-sm">$</span>
+                  <input type="number" step="0.01" required placeholder="0.00" value={item.totalValue}
+                    onChange={e => updateItem(item.id, "totalValue", e.target.value)}
+                    className={numInputClass + " font-medium"} {...tabProps("totalValue")} />
+                </div>
+              )}
+              {col.key === "costPerUnit" && (() => {
+                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                return (
+                  <span className="text-sm text-gray-500 whitespace-nowrap">
+                    ${cpu.toFixed(2)}/{unit}
+                  </span>
+                )
+              })()}
+              {col.key === "totalCost" && (() => {
+                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                const lineCost = cpu * (parseFloat(item.weight) || 0)
+                return (
+                  <span className="text-sm text-gray-500 whitespace-nowrap">
+                    ${lineCost.toFixed(2)}
+                  </span>
+                )
+              })()}
+            </td>
+          ))}
+          <td className="px-2 text-center align-middle w-8">
+            {(lineItems.length > 1 || editId) && (
+              <button type="button" onClick={() => removeItem(item.id)}
+                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                ×
+              </button>
+            )}
+          </td>
+        </tr>
+      )
+    })
+  }
 
   if (status === "loading" || !session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
@@ -298,7 +550,7 @@ export default function NewMemoPage() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
           <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">New Memo</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Memo${memoNumber ? ` — ${memoNumber}` : ""}` : "New Memo"}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -343,7 +595,33 @@ export default function NewMemoPage() {
             </div>
           </div>
 
-          {/* Spreadsheet Items */}
+          {/* Section toggles */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={showDiamonds} onChange={() => {
+                if (!showDiamonds && diamondItemsList.length === 0) {
+                  setLineItems(prev => [...prev, newItem(nextId)])
+                  setNextId(prev => prev + 1)
+                }
+                setShowDiamonds(!showDiamonds)
+              }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">Single Diamonds</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={showJewelry} onChange={() => {
+                if (!showJewelry && jewelryItemsList.length === 0) {
+                  setLineItems(prev => [...prev, newItem(nextId)])
+                  setNextId(prev => prev + 1)
+                }
+                setShowJewelry(!showJewelry)
+              }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">Jewelry</span>
+            </label>
+          </div>
+
+          {/* Regular Items Table */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <span className="text-sm font-semibold text-gray-700">Items</span>
@@ -369,7 +647,7 @@ export default function NewMemoPage() {
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={addItem}
+                <button type="button" onClick={() => addSectionItem("regular")}
                   className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
                   + Add Row
                 </button>
@@ -389,83 +667,116 @@ export default function NewMemoPage() {
                   </tr>
                 </thead>
                 <tbody ref={tableBodyRef} className="divide-y divide-gray-100">
-                  {lineItems.map(item => {
-                    const inv = inventory.find(i => i.id === item.inventoryItemId)
-                    const unit = inv ? unitLabels[inv.weightUnit] || "g" : "g"
-                    const isLastRow = item.id === lineItems[lineItems.length - 1].id
-                    const lastColKey = visibleDefs[visibleDefs.length - 1].key
-                    function tabProps(colKey: string) {
-                      return {
-                        onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-                          arrowNav(e)
-                          if (e.key === "Tab" && !e.shiftKey && isLastRow && colKey === lastColKey) { e.preventDefault(); addItemAndFocus() }
-                        }
-                      }
-                    }
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50 group">
-                        {visibleDefs.map(col => (
-                          <td key={col.key} className={`${cellClass} align-middle`}>
-                            {col.key === "item" && (
-                              <InventoryCombobox inventory={inventory} value={item.inventoryItemId}
-                                onChange={id => updateItem(item.id, "inventoryItemId", id)}
-                                onTabKey={isLastRow && lastColKey === "item" ? addItemAndFocus : undefined}
-                              />
-                            )}
-                            {col.key === "description" && (
-                              <input value={item.description} placeholder="Description"
-                                onChange={e => updateItem(item.id, "description", e.target.value)}
-                                className={inputClass + " min-w-[140px]"} {...tabProps("description")} />
-                            )}
-                            {col.key === "weight" && (
-                              <div className="flex items-center gap-1 min-w-[100px]">
-                                <input type="number" step="0.0001" required placeholder="0.000" value={item.weight}
-                                  onChange={e => updateItem(item.id, "weight", e.target.value)}
-                                  className={numInputClass} {...tabProps("weight")} />
-                                <span className="text-xs text-gray-400 whitespace-nowrap">{unit}</span>
-                              </div>
-                            )}
-                            {col.key === "pricePerUnit" && (
-                              <div className="flex items-center gap-0.5 min-w-[110px]">
-                                <span className="text-gray-400 text-sm">$</span>
-                                <input type="number" step="0.0001" placeholder="0.00" value={item.pricePerUnit}
-                                  onChange={e => updateItem(item.id, "pricePerUnit", e.target.value)}
-                                  className={numInputClass} {...tabProps("pricePerUnit")} />
-                                <span className="text-xs text-gray-400">/{unit}</span>
-                              </div>
-                            )}
-                            {col.key === "totalValue" && (
-                              <div className="flex items-center gap-0.5 min-w-[100px]">
-                                <span className="text-gray-400 text-sm">$</span>
-                                <input type="number" step="0.01" required placeholder="0.00" value={item.totalValue}
-                                  onChange={e => updateItem(item.id, "totalValue", e.target.value)}
-                                  className={numInputClass + " font-medium"} {...tabProps("totalValue")} />
-                              </div>
-                            )}
-                          </td>
-                        ))}
-                        <td className="px-2 text-center align-middle w-8">
-                          {lineItems.length > 1 && (
-                            <button type="button" onClick={() => removeItem(item.id)}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
-                              ×
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {renderTableRows(regularItems, regularItems, () => addSectionItem("regular"), tableBodyRef)}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-200 bg-gray-50">
-                    <td colSpan={visibleDefs.length} className="px-4 py-2 text-right text-sm font-semibold text-gray-600">Total Memo Value</td>
-                    <td className="px-2 py-2 text-right text-sm font-bold text-blue-600 whitespace-nowrap pr-10">
-                      ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
+          </div>
+
+          {/* Single Diamonds Table */}
+          {showDiamonds && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <span className="text-sm font-semibold text-gray-700">Single Diamonds</span>
+                <button type="button" onClick={() => addSectionItem("diamond")}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
+                  + Add Row
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {visibleDefs.map(col => (
+                        <th key={col.key} className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>
+                          {col.key === "item" ? "Item / Inventory" : col.label}
+                        </th>
+                      ))}
+                      <th className="px-2 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody ref={diamondBodyRef} className="divide-y divide-gray-100">
+                    {renderTableRows(diamondItemsList, diamondItemsList, () => addSectionItem("diamond"), diamondBodyRef)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Jewelry Table */}
+          {showJewelry && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <span className="text-sm font-semibold text-gray-700">Jewelry</span>
+                <button type="button" onClick={() => addSectionItem("jewelry")}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
+                  + Add Row
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {visibleDefs.map(col => (
+                        <th key={col.key} className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>
+                          {col.key === "item" ? "Item / Inventory" : col.label}
+                        </th>
+                      ))}
+                      <th className="px-2 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody ref={jewelryBodyRef} className="divide-y divide-gray-100">
+                    {renderTableRows(jewelryItemsList, jewelryItemsList, () => addSectionItem("jewelry"), jewelryBodyRef)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Totals */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full text-sm border-collapse">
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2 text-right text-sm font-semibold text-gray-600">Total Memo Value</td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-blue-600 whitespace-nowrap w-36">
+                    ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+                {!hideCost && (() => {
+                  const totalCost = lineItems.reduce((s, item) => {
+                    const inv = inventory.find(i => i.id === item.inventoryItemId)
+                    const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                    return s + cpu * (parseFloat(item.weight) || 0)
+                  }, 0)
+                  const totalProfit = grandTotal - totalCost
+                  return (
+                    <>
+                      <tr className="bg-gray-50">
+                        <td className="px-4 py-1 text-right text-sm text-gray-500">Total Cost</td>
+                        <td className="px-4 py-1 text-right text-sm text-gray-500 whitespace-nowrap w-36">
+                          ${totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                      <tr className="bg-gray-50">
+                        <td className="px-4 py-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
+                        <td className="px-4 py-1 text-right text-sm font-semibold text-gray-700 whitespace-nowrap w-36">
+                          ${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    </>
+                  )
+                })()}
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="px-1">
+            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+              <input type="checkbox" checked={hideCost} onChange={e => setHideCost(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              Hide cost and profit
+            </label>
           </div>
 
           {/* Notes */}
@@ -480,7 +791,7 @@ export default function NewMemoPage() {
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "Creating..." : "Create Memo"}
+              {loading ? "Saving..." : editId ? "Save Changes" : "Create Memo"}
             </button>
           </div>
         </form>

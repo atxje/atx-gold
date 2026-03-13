@@ -71,25 +71,68 @@ export async function PATCH(
     }
   }
 
-  // Update prices/descriptions for kept items and sync inventory stats
+  // Update prices/descriptions/weights for kept items and sync inventory stats
   if (items?.length) {
     for (const item of items) {
-      const existing = await prisma.invoiceItem.findUnique({ where: { id: item.id } })
+      const existing = await prisma.invoiceItem.findUnique({
+        where: { id: item.id },
+        include: { memoItem: true },
+      })
       if (!existing) continue
 
+      const weightDelta = (item.weight ?? existing.weight) - existing.weight
+      const newWeight = existing.weight + weightDelta
+
+      // Recalculate costBasis if weight changed
+      let newCostBasis = existing.costBasis
+      if (weightDelta !== 0) {
+        const inv = await prisma.inventoryItem.findUnique({ where: { id: existing.inventoryItemId } })
+        if (inv) {
+          // Avg cost per unit based on current totalCost + the old costBasis we're holding
+          const poolCost = inv.totalCost + existing.costBasis
+          const poolWeight = inv.availableWeight + existing.weight
+          const avgCost = poolWeight > 0 ? poolCost / poolWeight : 0
+          newCostBasis = avgCost * newWeight
+        }
+      }
+
+      const newProfit = item.totalPrice - newCostBasis
       const priceDelta = item.totalPrice - existing.totalPrice
-      const newProfit = item.totalPrice - existing.costBasis
       const profitDelta = newProfit - existing.profit
+      const costBasisDelta = newCostBasis - existing.costBasis
 
       await prisma.invoiceItem.update({
         where: { id: item.id },
-        data: { description: item.description, pricePerUnit: item.pricePerUnit, totalPrice: item.totalPrice, profit: newProfit },
+        data: {
+          description: item.description,
+          pricePerUnit: item.pricePerUnit,
+          totalPrice: item.totalPrice,
+          weight: newWeight,
+          costBasis: newCostBasis,
+          profit: newProfit,
+        },
       })
 
-      if (priceDelta !== 0) {
+      // Sync inventory stats
+      const inventoryUpdates: Record<string, unknown> = {}
+      if (priceDelta !== 0 || profitDelta !== 0) {
+        inventoryUpdates.soldValue = { increment: priceDelta }
+        inventoryUpdates.totalProfit = { increment: profitDelta }
+      }
+      if (weightDelta !== 0) {
+        inventoryUpdates.soldWeight = { increment: weightDelta }
+        // For non-memo items, availableWeight changes inversely
+        if (!existing.memoItemId) {
+          inventoryUpdates.availableWeight = { increment: -weightDelta }
+        }
+      }
+      if (costBasisDelta !== 0) {
+        inventoryUpdates.totalCost = { increment: -costBasisDelta }
+      }
+      if (Object.keys(inventoryUpdates).length > 0) {
         await prisma.inventoryItem.update({
           where: { id: existing.inventoryItemId },
-          data: { soldValue: { increment: priceDelta }, totalProfit: { increment: profitDelta } },
+          data: inventoryUpdates,
         })
       }
     }

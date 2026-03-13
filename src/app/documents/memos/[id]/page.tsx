@@ -16,7 +16,7 @@ interface MemoItem {
   pricePerUnit: number
   totalValue: number
   status: "ACTIVE" | "RETURNED" | "CONVERTED"
-  inventoryItem: { id: string; name: string }
+  inventoryItem: { id: string; name: string; totalCost: number; totalWeight: number }
 }
 
 interface Memo {
@@ -59,6 +59,7 @@ export default function MemoPage() {
   const [editReturnDate, setEditReturnDate] = useState("")
   const [editNotes, setEditNotes] = useState("")
   const [editItems, setEditItems] = useState<{ id: string; description: string; pricePerUnit: string; totalValue: string; lastEdited: "pricePerUnit" | "totalValue" }[]>([])
+  const [hideCost, setHideCost] = useState(false)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -247,7 +248,7 @@ export default function MemoPage() {
                     </button>
                   </>
                 )}
-                <button onClick={startEdit}
+                <button onClick={() => router.push(`/documents/memos/new?editId=${id}`)}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
                   Edit
                 </button>
@@ -328,6 +329,12 @@ export default function MemoPage() {
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Weight</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Price/Unit</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Memo Value</th>
+              {!hideCost && !editMode && (
+                <>
+                  <th className="print:hidden text-right py-2 text-sm font-semibold text-gray-700">Cost/Unit</th>
+                  <th className="print:hidden text-right py-2 text-sm font-semibold text-gray-700">Total Cost</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -389,6 +396,17 @@ export default function MemoPage() {
                       </div>
                     ) : `$${item.totalValue.toFixed(2)}`}
                   </td>
+                  {!hideCost && !editMode && (() => {
+                    const costPerUnit = item.inventoryItem.totalWeight > 0 ? item.inventoryItem.totalCost / item.inventoryItem.totalWeight : 0
+                    const lineCost = costPerUnit * item.weight
+                    const unit = unitLabels[item.weightUnit] || "g"
+                    return (
+                      <>
+                        <td className="print:hidden py-3 text-sm text-gray-500 text-right">${costPerUnit.toFixed(2)}/{unit}</td>
+                        <td className="print:hidden py-3 text-sm text-gray-500 text-right">${lineCost.toFixed(2)}</td>
+                      </>
+                    )
+                  })()}
                 </tr>
               )
             })}
@@ -396,11 +414,42 @@ export default function MemoPage() {
           <tfoot>
             <tr>
               <td className="print:hidden" />
-              <td colSpan={3} className="pt-4 text-right font-bold text-gray-900">Total Memo Value</td>
+              <td colSpan={!hideCost && !editMode ? 5 : 3} className="pt-4 text-right font-bold text-gray-900">Total Memo Value</td>
               <td className="pt-4 text-right font-bold text-xl text-blue-600">${memo.totalValue.toFixed(2)}</td>
             </tr>
+            {!hideCost && !editMode && (() => {
+              const totalCost = memo.items.reduce((s, i) => {
+                const avgCost = i.inventoryItem.totalWeight > 0 ? i.inventoryItem.totalCost / i.inventoryItem.totalWeight : 0
+                return s + avgCost * i.weight
+              }, 0)
+              const totalProfit = memo.totalValue - totalCost
+              return (
+                <>
+                  <tr className="print:hidden">
+                    <td className="print:hidden" />
+                    <td colSpan={5} className="pt-1 text-right text-sm text-gray-500">Total Cost</td>
+                    <td className="pt-1 text-right text-sm text-gray-500">${totalCost.toFixed(2)}</td>
+                  </tr>
+                  <tr className="print:hidden">
+                    <td className="print:hidden" />
+                    <td colSpan={5} className="pt-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
+                    <td className="pt-1 text-right text-sm font-semibold text-gray-700">${totalProfit.toFixed(2)}</td>
+                  </tr>
+                </>
+              )
+            })()}
           </tfoot>
         </table>
+
+        {!editMode && (
+          <div className="print:hidden mb-4">
+            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+              <input type="checkbox" checked={hideCost} onChange={e => setHideCost(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              Hide cost and profit
+            </label>
+          </div>
+        )}
 
         {(memo.notes || editMode) && (
           <div className="mb-8">

@@ -16,7 +16,7 @@ export async function GET(
     include: {
       lead: { select: { id: true, name: true, phone: true, email: true } },
       user: { select: { id: true, name: true, email: true } },
-      inventoryItem: { select: { id: true, name: true, itemCode: true } },
+      inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } },
     },
   })
 
@@ -26,7 +26,7 @@ export async function GET(
   if (purchase.purchaseNumber) {
     items = await prisma.purchase.findMany({
       where: { purchaseNumber: purchase.purchaseNumber },
-      include: { inventoryItem: { select: { id: true, name: true, itemCode: true } } },
+      include: { inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } } },
       orderBy: { createdAt: "asc" },
     }) as typeof items
   }
@@ -42,9 +42,34 @@ export async function PUT(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const { purchaseDate, notes, paymentMethod, items } = await request.json()
+  const { purchaseDate, notes, paymentMethod, items, removeItemIds } = await request.json()
 
   const paymentMethodJson = paymentMethod?.length ? JSON.stringify(paymentMethod) : null
+
+  // Grab purchaseNumber before any deletions so we can find surviving siblings
+  const original = await prisma.purchase.findUnique({ where: { id }, select: { purchaseNumber: true } })
+  const purchaseNumber = original?.purchaseNumber
+
+  // Delete removed items and reverse their inventory effects
+  if (removeItemIds?.length) {
+    for (const removeId of removeItemIds) {
+      const purchase = await prisma.purchase.findUnique({ where: { id: removeId } })
+      if (!purchase) continue
+
+      if (purchase.inventoryItemId) {
+        await prisma.inventoryItem.update({
+          where: { id: purchase.inventoryItemId },
+          data: {
+            totalWeight: { decrement: purchase.weight },
+            availableWeight: { decrement: purchase.weight },
+            totalCost: { decrement: purchase.pricePaid },
+          },
+        })
+      }
+
+      await prisma.purchase.delete({ where: { id: removeId } })
+    }
+  }
 
   for (const item of items ?? []) {
     const existing = await prisma.purchase.findUnique({ where: { id: item.id } })
@@ -81,22 +106,49 @@ export async function PUT(
         },
       })
     }
+
+    // Update diamond details if present
+    if (item.diamondData && existing.inventoryItemId) {
+      await prisma.diamondDetails.upsert({
+        where: { inventoryItemId: existing.inventoryItemId },
+        update: item.diamondData,
+        create: { inventoryItemId: existing.inventoryItemId, ...item.diamondData },
+      })
+    }
+
+    // Update jewelry details if present
+    if (item.jewelryData && existing.inventoryItemId) {
+      await prisma.jewelryDetails.upsert({
+        where: { inventoryItemId: existing.inventoryItemId },
+        update: item.jewelryData,
+        create: { inventoryItemId: existing.inventoryItemId, ...item.jewelryData },
+      })
+    }
   }
 
-  // Re-fetch the full document to return
-  const purchase = await prisma.purchase.findUnique({
+  // Re-fetch the full document to return — if the original id was deleted, find a surviving sibling
+  let purchase = await prisma.purchase.findUnique({
     where: { id },
     include: {
       lead: { select: { id: true, name: true, phone: true, email: true } },
-      inventoryItem: { select: { id: true, name: true, itemCode: true } },
+      inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } },
     },
   })
+  if (!purchase && purchaseNumber) {
+    purchase = await prisma.purchase.findFirst({
+      where: { purchaseNumber },
+      include: {
+        lead: { select: { id: true, name: true, phone: true, email: true } },
+        inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } },
+      },
+    })
+  }
   if (!purchase) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const allItems = purchase.purchaseNumber
     ? await prisma.purchase.findMany({
         where: { purchaseNumber: purchase.purchaseNumber },
-        include: { inventoryItem: { select: { id: true, name: true, itemCode: true } } },
+        include: { inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } } },
         orderBy: { createdAt: "asc" },
       })
     : [purchase]

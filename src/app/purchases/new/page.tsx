@@ -74,6 +74,7 @@ interface PaymentEntry {
 
 interface LineItem {
   id: number
+  dbId?: string
   category: string
   subcategory: string
   weight: string
@@ -87,6 +88,7 @@ interface LineItem {
   diamondData?: DiamondData
   jewelryData?: JewelryData
   itemCode?: string
+  weightUnit?: string
 }
 
 interface ColDef {
@@ -151,6 +153,7 @@ function NewPurchaseForm() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const editId = searchParams.get("editId")
   const preselectedLeadId = searchParams.get("leadId")
 
   const [categories, setCategories] = useState<Record<string, CategoryDef>>({})
@@ -166,6 +169,8 @@ function NewPurchaseForm() {
   const [newLeadChannel, setNewLeadChannel] = useState("PHONE")
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0])
   const [notes, setNotes] = useState("")
+  const [editPurchaseNumber, setEditPurchaseNumber] = useState("")
+  const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
   const [payments, setPayments] = useState<PaymentEntry[]>([])
   const [lineItems, setLineItems] = useState<LineItem[]>([newLineItem(1)])
   const [nextId, setNextId] = useState(2)
@@ -184,7 +189,7 @@ function NewPurchaseForm() {
   useEffect(() => {
     if (session) {
       fetch("/api/leads").then(r => r.ok ? r.json() : []).then(setLeads)
-      fetch("/api/categories").then(r => r.ok ? r.json() : []).then((cats: { id: string; name: string; metalType: string; weightUnit: string; subcategories: { name: string }[] }[]) => {
+      const catPromise = fetch("/api/categories").then(r => r.ok ? r.json() : []).then((cats: { id: string; name: string; metalType: string; weightUnit: string; subcategories: { name: string }[] }[]) => {
         const map: Record<string, CategoryDef> = {}
         cats.forEach(c => {
           map[c.id] = {
@@ -196,7 +201,100 @@ function NewPurchaseForm() {
           }
         })
         setCategories(map)
+        return map
       })
+      if (editId) {
+        catPromise.then(async (catMap) => {
+          const res = await fetch(`/api/purchases/${editId}`)
+          if (!res.ok) return
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const purchase: any = await res.json()
+          setSelectedLeadId(purchase.lead?.id || "")
+          setPurchaseDate(new Date(purchase.purchaseDate).toISOString().split("T")[0])
+          setNotes(purchase.notes || "")
+          setEditPurchaseNumber(purchase.purchaseNumber || "")
+          // Parse payment
+          try {
+            if (purchase.paymentMethod) {
+              const pm = typeof purchase.paymentMethod === "string" ? JSON.parse(purchase.paymentMethod) : purchase.paymentMethod
+              if (Array.isArray(pm)) setPayments(pm.map((p: { method: string; amount: number }) => ({ method: p.method, amount: p.amount.toString() })))
+            }
+          } catch {}
+          // Map items to line items, reverse-mapping category labels to IDs
+          // Split into regular, diamond, and jewelry based on metalType
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const items: any[] = purchase.items || []
+          const regularRows: LineItem[] = []
+          const diamondRows: LineItem[] = []
+          const jewelryRows: LineItem[] = []
+          let counter = 1
+          for (const item of items) {
+            const catEntry = Object.entries(catMap).find(([, c]) => c.label === item.category)
+            const catId = catEntry?.[0] || ""
+            const catDef = catEntry?.[1]
+            const ppu = item.pricePerUnit ?? (item.weight > 0 ? item.pricePaid / item.weight : 0)
+            const base: LineItem = {
+              ...newLineItem(counter++),
+              dbId: item.id,
+              category: catId,
+              subcategory: item.subcategory || "",
+              description: item.description,
+              weight: item.weight.toString(),
+              pricePerUnit: ppu ? ppu.toString() : "",
+              pricePaid: item.pricePaid.toString(),
+              lastEdited: "pricePaid" as const,
+              itemCode: item.inventoryItem?.itemCode || undefined,
+              weightUnit: item.weightUnit,
+            }
+
+            if (catDef?.metalType === "DIAMOND" && item.inventoryItem?.diamondDetails) {
+              const dd = item.inventoryItem.diamondDetails
+              base.diamondData = {
+                shape: dd.shape || "",
+                caratWeight: dd.caratWeight?.toString() || "",
+                color: dd.color || "",
+                clarity: dd.clarity || "",
+                lab: dd.lab || "",
+                certNumber: dd.certNumber || "",
+                cutGrade: dd.cutGrade || "",
+                polish: dd.polish || "",
+                symmetry: dd.symmetry || "",
+                fluorescence: dd.fluorescence || "",
+                measurements: dd.measurements || "",
+                costPerCarat: dd.costPerCarat?.toString() || "",
+                rapPrice: dd.rapPrice?.toString() || "",
+                rapDiscount: dd.rapDiscount?.toString() || "",
+                notes: dd.notes || "",
+              }
+              diamondRows.push(base)
+            } else if (catDef?.metalType === "JEWELRY" && item.inventoryItem?.jewelryDetails) {
+              const jd = item.inventoryItem.jewelryDetails
+              base.jewelryData = {
+                metal: jd.metal || "",
+                brand: jd.brand || "",
+                mainStone: jd.mainStone || "",
+                weight: item.weight.toString(),
+                costPerGram: jd.costPerGram?.toString() || "",
+                totalPrice: item.pricePaid.toString(),
+              }
+              jewelryRows.push(base)
+            } else {
+              regularRows.push(base)
+            }
+          }
+          if (regularRows.length > 0) setLineItems(regularRows)
+          if (diamondRows.length > 0) {
+            setDiamondItems(diamondRows)
+            setShowDiamonds(true)
+          }
+          if (jewelryRows.length > 0) {
+            setJewelryItems(jewelryRows)
+            setShowJewelry(true)
+          }
+          setNextId(counter)
+          setOriginalDbIds(items.map((item: { id: string }) => item.id))
+        })
+      }
     }
   }, [session])
 
@@ -351,7 +449,11 @@ function NewPurchaseForm() {
   }
 
   function removeDiamondRow(id: number) {
-    if (diamondItems.length > 1) setDiamondItems(diamondItems.filter(i => i.id !== id))
+    setDiamondItems(prev => {
+      const next = prev.filter(i => i.id !== id)
+      if (next.length === 0) setShowDiamonds(false)
+      return next
+    })
   }
 
   function addJewelryRow() {
@@ -365,7 +467,11 @@ function NewPurchaseForm() {
   }
 
   function removeJewelryRow(id: number) {
-    if (jewelryItems.length > 1) setJewelryItems(jewelryItems.filter(i => i.id !== id))
+    setJewelryItems(prev => {
+      const next = prev.filter(i => i.id !== id)
+      if (next.length === 0) setShowJewelry(false)
+      return next
+    })
   }
 
   function updateDiamondItem(id: number, field: keyof DiamondData, value: string) {
@@ -488,6 +594,159 @@ function NewPurchaseForm() {
     setError("")
     setLoading(true)
     try {
+      if (editId) {
+        // Edit mode
+        let redirectId = editId
+        const paymentData = payments.length > 0
+          ? payments.filter(p => p.amount).map(p => ({ method: p.method, amount: parseFloat(p.amount) }))
+          : null
+
+        const existingItems = [
+          ...lineItems.filter(i => i.dbId),
+          ...diamondItems.filter(i => i.dbId),
+          ...jewelryItems.filter(i => i.dbId),
+        ]
+        const keptDbIds = existingItems.map(i => i.dbId!).filter(Boolean)
+        const removedIds = originalDbIds.filter(id => !keptDbIds.includes(id))
+
+        const isRowEmpty = (item: LineItem) => !item.weight && !item.pricePaid
+        const allNewItems = [
+          ...lineItems.filter(i => !i.dbId),
+          ...(showDiamonds ? diamondItems.filter(i => !i.dbId) : []),
+          ...(showJewelry ? jewelryItems.filter(i => !i.dbId) : []),
+        ].filter(item => !isRowEmpty(item))
+
+        // PUT existing items + remove deleted items
+        if (existingItems.length > 0 || removedIds.length > 0) {
+          const res = await fetch(`/api/purchases/${editId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              purchaseDate,
+              notes: notes || null,
+              paymentMethod: paymentData,
+              removeItemIds: removedIds.length > 0 ? removedIds : undefined,
+              items: existingItems.map(item => {
+                const dd = item.diamondData
+                const jd = item.jewelryData
+                return {
+                  id: item.dbId,
+                  description: item.description,
+                  weight: parseFloat(item.weight) || 0,
+                  pricePerUnit: parseFloat(item.pricePerUnit) || null,
+                  pricePaid: parseFloat(item.pricePaid) || 0,
+                  ...(dd && { diamondData: {
+                    shape: dd.shape || null, caratWeight: dd.caratWeight ? parseFloat(dd.caratWeight) : null,
+                    color: dd.color || null, clarity: dd.clarity || null, lab: dd.lab || null,
+                    certNumber: dd.certNumber || null, cutGrade: dd.cutGrade || null,
+                    polish: dd.polish || null, symmetry: dd.symmetry || null,
+                    fluorescence: dd.fluorescence || null, measurements: dd.measurements || null,
+                    costPerCarat: dd.costPerCarat ? parseFloat(dd.costPerCarat) : null,
+                    rapPrice: dd.rapPrice ? parseFloat(dd.rapPrice) : null,
+                    rapDiscount: dd.rapDiscount ? parseFloat(dd.rapDiscount) : null,
+                    notes: dd.notes || null,
+                  }}),
+                  ...(jd && { jewelryData: {
+                    metal: jd.metal || null, brand: jd.brand || null,
+                    mainStone: jd.mainStone || null,
+                    costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+                  }}),
+                }
+              }),
+            }),
+          })
+          if (!res.ok) throw new Error((await res.json()).error || "Failed to save purchase")
+          const putResult = await res.json()
+          // If the original editId was deleted, use the surviving purchase's ID for redirect
+          redirectId = putResult.id || editId
+        }
+
+        // POST new items using the existing purchaseNumber and leadId
+        for (const item of allNewItems) {
+          if (!item.category || !item.subcategory || !item.weight || !item.pricePaid) {
+            throw new Error("Please fill in all required fields for new items")
+          }
+          const cat = categories[item.category]
+          let baseDesc: string
+          let extras: string
+          if (item.jewelryData?.metal) {
+            const jd = item.jewelryData
+            const parts = [jd.metal, item.subcategory, jd.brand, jd.mainStone && jd.mainStone !== "None" && `w/ ${jd.mainStone}`].filter(Boolean)
+            baseDesc = item.description || parts.join(" ")
+            extras = ""
+          } else if (item.diamondData?.shape) {
+            const dd = item.diamondData
+            const parts = [dd.shape, dd.caratWeight && `${dd.caratWeight}ct`, dd.color, dd.clarity, dd.cutGrade].filter(Boolean)
+            baseDesc = item.description || parts.join(" ")
+            extras = [dd.lab && dd.certNumber && `${dd.lab} ${dd.certNumber}`].filter(Boolean).join(", ")
+          } else {
+            extras = [item.color && `Color: ${item.color}`, item.clarity && `Clarity: ${item.clarity}`, item.caratWeight && `Carat: ${item.caratWeight}ct`].filter(Boolean).join(", ")
+            baseDesc = item.description || `${item.subcategory} ${cat?.label || ""}`.trim()
+          }
+          const fullDesc = extras ? `${baseDesc} (${extras})` : baseDesc
+
+          const res: Response = await fetch("/api/purchases", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              purchaseNumber: editPurchaseNumber,
+              leadId: selectedLeadId,
+              description: fullDesc,
+              metalType: cat?.metalType || "OTHER",
+              weight: item.weight,
+              weightUnit: cat?.weightUnit || "GRAM",
+              purity: item.subcategory,
+              pricePaid: item.pricePaid,
+              pricePerUnit: item.pricePerUnit || null,
+              category: cat?.label || item.category,
+              subcategory: item.subcategory,
+              purchaseDate,
+              notes: notes || null,
+              paymentMethod: paymentData,
+            }),
+          })
+          if (!res.ok) throw new Error((await res.json()).error || "Failed to add new item")
+
+          // Save diamond/jewelry details if present
+          const created = await res.json()
+          if (item.diamondData && created.inventoryItemId) {
+            const dd = item.diamondData
+            await fetch("/api/diamonds", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                inventoryItemId: created.inventoryItemId,
+                shape: dd.shape || null, caratWeight: dd.caratWeight ? parseFloat(dd.caratWeight) : null,
+                color: dd.color || null, clarity: dd.clarity || null, lab: dd.lab || null,
+                certNumber: dd.certNumber || null, cutGrade: dd.cutGrade || null,
+                polish: dd.polish || null, symmetry: dd.symmetry || null,
+                fluorescence: dd.fluorescence || null, measurements: dd.measurements || null,
+                costPerCarat: dd.costPerCarat ? parseFloat(dd.costPerCarat) : null,
+                rapPrice: dd.rapPrice ? parseFloat(dd.rapPrice) : null,
+                rapDiscount: dd.rapDiscount ? parseFloat(dd.rapDiscount) : null,
+                notes: dd.notes || null,
+              }),
+            })
+          }
+          if (item.jewelryData && created.inventoryItemId) {
+            const jd = item.jewelryData
+            await fetch("/api/jewelry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                inventoryItemId: created.inventoryItemId,
+                metal: jd.metal || null, brand: jd.brand || null,
+                mainStone: jd.mainStone || null,
+                costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+              }),
+            })
+          }
+        }
+
+        router.push(`/purchases/${redirectId || editId}`)
+        return
+      }
+
       let leadId = selectedLeadId
 
       if (isNewLead) {
@@ -644,7 +903,7 @@ function NewPurchaseForm() {
       <main className={`mx-auto px-4 py-8 ${showDiamonds ? "max-w-[1400px]" : "max-w-6xl"}`}>
         <div className="mb-6">
           <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">Record Purchase</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Purchase${editPurchaseNumber ? ` — ${editPurchaseNumber}` : ""}` : "Record Purchase"}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -791,7 +1050,7 @@ function NewPurchaseForm() {
                         {visibleDefs.map(col => (
                           <td key={col.key} className={`${cellClass} align-middle`}>
                             {col.key === "category" && (
-                              <select required value={item.category}
+                              <select value={item.category}
                                 onChange={e => updateLineItem(item.id, "category", e.target.value)}
                                 className={selectClass + " min-w-[140px]"}>
                                 <option value="">Select...</option>
@@ -801,7 +1060,7 @@ function NewPurchaseForm() {
                               </select>
                             )}
                             {col.key === "type" && (
-                              <select required value={item.subcategory} disabled={!item.category}
+                              <select value={item.subcategory} disabled={!item.category}
                                 onChange={e => updateLineItem(item.id, "subcategory", e.target.value)}
                                 className={selectClass + " min-w-[120px] disabled:opacity-40"}>
                                 <option value="">Select...</option>
@@ -837,7 +1096,7 @@ function NewPurchaseForm() {
                             )}
                             {col.key === "weight" && (
                               <div className="flex items-center gap-1 min-w-[100px]">
-                                <input type="number" step="0.0001" required placeholder="0.000" value={item.weight}
+                                <input type="number" step="0.0001" placeholder="0.000" value={item.weight}
                                   onChange={e => updateLineItem(item.id, "weight", e.target.value)}
                                   className={numInputClass}
                                   {...tabProps("weight", isLastRow)} />
@@ -857,7 +1116,7 @@ function NewPurchaseForm() {
                             {col.key === "pricePaid" && (
                               <div className="flex items-center gap-0.5 min-w-[100px]">
                                 <span className="text-gray-400 text-sm">$</span>
-                                <input type="number" step="0.01" required placeholder="0.00" value={item.pricePaid}
+                                <input type="number" step="0.01" placeholder="0.00" value={item.pricePaid}
                                   onChange={e => updateLineItem(item.id, "pricePaid", e.target.value)}
                                   className={numInputClass + " font-medium"}
                                   {...tabProps("pricePaid", isLastRow)} />
@@ -991,19 +1250,17 @@ function NewPurchaseForm() {
                           <td className={`${cellClass} align-middle`}>
                             <div className="flex items-center gap-0.5 min-w-[90px]">
                               <span className="text-gray-400 text-sm">$</span>
-                              <input type="number" step="0.01" required value={item.pricePaid} placeholder="0.00"
+                              <input type="number" step="0.01" value={item.pricePaid} placeholder="0.00"
                                 onChange={e => updateDiamondTotal(item.id, e.target.value)}
                                 onKeyDown={e => { arrowNav(e); if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addDiamondRow() } }}
                                 className={numInputClass + " font-medium"} />
                             </div>
                           </td>
                           <td className="px-1 text-center align-middle w-8">
-                            {diamondItems.length > 1 && (
-                              <button type="button" onClick={() => removeDiamondRow(item.id)}
-                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
-                                x
-                              </button>
-                            )}
+                            <button type="button" onClick={() => removeDiamondRow(item.id)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              ×
+                            </button>
                           </td>
                         </tr>
                       )
@@ -1047,7 +1304,7 @@ function NewPurchaseForm() {
                             <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-600">{item.itemCode}</span>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select required value={item.subcategory}
+                            <select value={item.subcategory}
                               onChange={e => updateJewelrySubcategory(item.id, e.target.value)}
                               className={selectClass + " min-w-[100px]"}>
                               <option value="">Select...</option>
@@ -1092,19 +1349,17 @@ function NewPurchaseForm() {
                           <td className={`${cellClass} align-middle`}>
                             <div className="flex items-center gap-0.5 min-w-[90px]">
                               <span className="text-gray-400 text-sm">$</span>
-                              <input type="number" step="0.01" required value={jd.totalPrice} placeholder="0.00"
+                              <input type="number" step="0.01" value={jd.totalPrice} placeholder="0.00"
                                 onChange={e => updateJewelryItem(item.id, "totalPrice", e.target.value)}
                                 onKeyDown={e => { arrowNav(e); if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addJewelryRow() } }}
                                 className={numInputClass + " font-medium"} />
                             </div>
                           </td>
                           <td className="px-1 text-center align-middle w-8">
-                            {jewelryItems.length > 1 && (
-                              <button type="button" onClick={() => removeJewelryRow(item.id)}
-                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
-                                x
-                              </button>
-                            )}
+                            <button type="button" onClick={() => removeJewelryRow(item.id)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              ×
+                            </button>
                           </td>
                         </tr>
                       )
@@ -1179,7 +1434,7 @@ function NewPurchaseForm() {
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={loading}
               className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
-              {loading ? "Recording..." : `Record ${lineItems.length} Item${lineItems.length > 1 ? "s" : ""}`}
+              {loading ? "Saving..." : editId ? "Save Changes" : `Record ${lineItems.length + diamondItems.length + jewelryItems.length} Item${lineItems.length + diamondItems.length + jewelryItems.length > 1 ? "s" : ""}`}
             </button>
           </div>
         </form>

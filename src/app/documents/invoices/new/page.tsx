@@ -6,6 +6,19 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { arrowNav } from "@/lib/table-nav"
 
+interface InventoryItem {
+  id: string
+  name: string
+  weightUnit: string
+  availableWeight: number
+  totalCost: number
+  totalWeight: number
+  itemCode?: string | null
+  category?: string
+  diamondDetails?: { shape?: string; caratWeight?: number; color?: string; clarity?: string; lab?: string; certNumber?: string } | null
+  jewelryDetails?: { metal?: string; brand?: string; mainStone?: string } | null
+}
+
 // Searchable inventory combobox
 function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
   inventory: InventoryItem[]
@@ -18,10 +31,7 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  // Sync display when value changes externally
-  useEffect(() => {
-    setQuery(selected?.name || "")
-  }, [value, selected?.name])
+  useEffect(() => { setQuery(selected?.name || "") }, [value, selected?.name])
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -35,58 +45,51 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
     ? inventory
     : inventory.filter(i => i.name.toLowerCase().includes(query.toLowerCase()))
 
-  function select(item: InventoryItem) {
-    setQuery(item.name)
-    setOpen(false)
-    onChange(item.id)
-  }
-
-  function handleInput(val: string) {
-    setQuery(val)
-    setOpen(true)
-    if (!val) onChange("")
+  function subtitle(item: InventoryItem) {
+    if (item.diamondDetails) {
+      const d = item.diamondDetails
+      const parts = [d.shape, d.caratWeight ? `${d.caratWeight}ct` : "", d.color, d.clarity, item.itemCode].filter(Boolean)
+      return parts.length > 0 ? parts.join(" / ") : null
+    }
+    if (item.jewelryDetails) {
+      const j = item.jewelryDetails
+      const parts = [j.metal, j.brand, item.itemCode].filter(Boolean)
+      return parts.length > 0 ? parts.join(" / ") : null
+    }
+    return null
   }
 
   return (
     <div ref={ref} className="relative min-w-[200px]">
-      <input
-        value={query}
-        onChange={e => handleInput(e.target.value)}
+      <input value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange("") }}
         onFocus={() => setOpen(true)}
-        onKeyDown={e => {
-          if (e.key === "Tab" && !e.shiftKey && onTabKey) { e.preventDefault(); onTabKey() }
-        }}
+        onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && onTabKey) { e.preventDefault(); onTabKey() } }}
         placeholder="Type to search…"
         className="w-full px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50 rounded"
       />
       {open && filtered.length > 0 && (
         <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto min-w-[260px]">
-          {filtered.map(item => (
-            <div key={item.id} onMouseDown={() => select(item)}
-              className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${item.id === value ? "bg-blue-50 font-medium" : ""}`}>
-              <div className="font-medium text-gray-900">{item.name}</div>
-              <div className="text-xs text-gray-400">
-                {item.availableWeight.toFixed(3)} {unitLabels[item.weightUnit]} available
+          {filtered.map(item => {
+            const sub = subtitle(item)
+            return (
+              <div key={item.id} onMouseDown={() => { setQuery(item.name); setOpen(false); onChange(item.id) }}
+                className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${item.id === value ? "bg-blue-50 font-medium" : ""}`}>
+                <div className="font-medium text-gray-900">{item.name}</div>
+                {sub && <div className="text-xs text-gray-500">{sub}</div>}
+                <div className="text-xs text-gray-400">{item.availableWeight.toFixed(3)} {unitLabels[item.weightUnit]} available</div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
-      {open && filtered.length === 0 && (
+      {open && filtered.length === 0 && query && (
         <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400 min-w-[200px]">
           No items found
         </div>
       )}
     </div>
   )
-}
-
-interface InventoryItem {
-  id: string
-  name: string
-  weightUnit: string
-  availableWeight: number
-  totalCost: number
 }
 
 interface Customer {
@@ -100,12 +103,15 @@ interface Customer {
 
 interface LineItem {
   id: number
+  dbId?: string
+  dbWeight?: number
   inventoryItemId: string
   description: string
   weight: string
   pricePerUnit: string
   totalPrice: string
   lastEdited: "pricePerUnit" | "totalPrice"
+  costPerUnit?: number
 }
 
 // Column definitions
@@ -122,6 +128,8 @@ const ALL_COLUMNS: ColDef[] = [
   { key: "weight",      label: "Weight",      removable: false, defaultVisible: true },
   { key: "pricePerUnit",label: "Price/Unit",  removable: true,  defaultVisible: true },
   { key: "totalPrice",  label: "Total Price", removable: false, defaultVisible: true },
+  { key: "costPerUnit", label: "Cost/Unit",   removable: false, defaultVisible: true },
+  { key: "totalCost",   label: "Total Cost",  removable: false, defaultVisible: true },
 ]
 
 const STORAGE_KEY = "invoice-columns"
@@ -145,6 +153,7 @@ export default function NewInvoicePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const editId = searchParams.get("editId")
   const memoItemIds = searchParams.get("memoItems")?.split(",").filter(Boolean) || []
   const rawItems = searchParams.get("items")?.split(",").filter(Boolean) || []
   // items may be plain IDs or "id:weight:pricePerUnit:totalPrice" encoded from memo
@@ -166,13 +175,21 @@ export default function NewInvoicePage() {
   const [buyerAddress, setBuyerAddress] = useState("")
   const [date, setDate] = useState(new Date().toISOString().split("T")[0])
   const [notes, setNotes] = useState("")
+  const [invoiceNumber, setInvoiceNumber] = useState("")
   const [lineItems, setLineItems] = useState<LineItem[]>([newItem(1)])
   const [nextId, setNextId] = useState(2)
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(loadVisibleCols)
   const [showColMenu, setShowColMenu] = useState(false)
+  const [hideCost, setHideCost] = useState(false)
+  const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
   const colMenuRef = useRef<HTMLDivElement>(null)
   const [focusLastRow, setFocusLastRow] = useState(false)
   const tableBodyRef = useRef<HTMLTableSectionElement>(null)
+  const [showDiamonds, setShowDiamonds] = useState(false)
+  const [showJewelry, setShowJewelry] = useState(false)
+  const [focusSection, setFocusSection] = useState<"regular" | "diamond" | "jewelry" | null>(null)
+  const diamondBodyRef = useRef<HTMLTableSectionElement>(null)
+  const jewelryBodyRef = useRef<HTMLTableSectionElement>(null)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -180,11 +197,47 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     if (session) {
-      fetch("/api/inventory").then(r => r.json()).then((inv: InventoryItem[]) => {
+      const fetches: Promise<unknown>[] = [
+        fetch("/api/inventory").then(r => r.json()),
+        fetch("/api/customers").then(r => r.json()),
+      ]
+      if (editId) fetches.push(fetch(`/api/invoices/${editId}`).then(r => r.json()))
+      Promise.all(fetches).then((results) => {
+        const inv = results[0] as InventoryItem[]
+        const cust = results[1] as Customer[]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const invoice = results[2] as any
         setInventory(inv)
-        if (preselectedIds.length > 0) {
+        setCustomers(cust)
+
+        let loadedRows: LineItem[] | null = null
+        if (invoice && editId) {
+          setBuyerName(invoice.buyerName)
+          setBuyerEmail(invoice.buyerEmail || "")
+          setBuyerPhone(invoice.buyerPhone || "")
+          setBuyerAddress(invoice.buyerAddress || "")
+          setDate(new Date(invoice.date).toISOString().split("T")[0])
+          setNotes(invoice.notes || "")
+          setInvoiceNumber(invoice.invoiceNumber)
+          const rows: LineItem[] = invoice.items.map((item: { id: string; inventoryItemId: string; description: string; weight: number; pricePerUnit: number; totalPrice: number; costBasis?: number }, i: number) => ({
+            id: i + 1,
+            dbId: item.id,
+            dbWeight: item.weight,
+            inventoryItemId: item.inventoryItemId,
+            description: item.description,
+            weight: item.weight.toString(),
+            pricePerUnit: item.pricePerUnit.toString(),
+            totalPrice: item.totalPrice.toString(),
+            lastEdited: "totalPrice" as const,
+            costPerUnit: item.costBasis && item.weight > 0 ? item.costBasis / item.weight : 0,
+          }))
+          setLineItems(rows)
+          setNextId(rows.length + 1)
+          setOriginalDbIds(invoice.items.map((item: { id: string }) => item.id))
+          loadedRows = rows
+        } else if (preselectedIds.length > 0) {
           const rows = preselectedIds.map((id, i) => {
-            const item = inv.find(x => x.id === id)
+            const item = (inv as InventoryItem[]).find(x => x.id === id)
             if (!item) return newItem(i + 1)
             const pre = preselectedData[id]
             return {
@@ -199,11 +252,19 @@ export default function NewInvoicePage() {
           })
           setLineItems(rows)
           setNextId(rows.length + 1)
+          loadedRows = rows
+        }
+
+        // Auto-enable diamond/jewelry sections if loaded items belong to those categories
+        if (loadedRows) {
+          const hasDiamond = loadedRows.some(r => { const x = inv.find(i => i.id === r.inventoryItemId); return !!x?.diamondDetails })
+          const hasJewelry = loadedRows.some(r => { const x = inv.find(i => i.id === r.inventoryItemId); return !!x?.jewelryDetails })
+          if (hasDiamond) setShowDiamonds(true)
+          if (hasJewelry) setShowJewelry(true)
         }
       })
-      fetch("/api/customers").then(r => r.json()).then(setCustomers)
     }
-  }, [session])
+  }, [session, editId])
 
   // Close col menu on outside click
   useEffect(() => {
@@ -213,6 +274,26 @@ export default function NewInvoicePage() {
     document.addEventListener("mousedown", handle)
     return () => document.removeEventListener("mousedown", handle)
   }, [])
+
+  useEffect(() => {
+    if (focusLastRow && tableBodyRef.current) {
+      setFocusLastRow(false)
+      const rows = tableBodyRef.current.querySelectorAll("tr")
+      const lastRow = rows[rows.length - 1]
+      lastRow?.querySelector<HTMLInputElement>("input")?.focus()
+    }
+  }, [focusLastRow, lineItems])
+
+  useEffect(() => {
+    if (!focusSection) return
+    const ref = focusSection === "diamond" ? diamondBodyRef : focusSection === "jewelry" ? jewelryBodyRef : tableBodyRef
+    if (ref.current) {
+      setFocusSection(null)
+      const rows = ref.current.querySelectorAll("tr")
+      const lastRow = rows[rows.length - 1]
+      lastRow?.querySelector<HTMLInputElement>("input")?.focus()
+    }
+  }, [focusSection, lineItems])
 
   function toggleCol(key: string) {
     const next = { ...visibleCols, [key]: !visibleCols[key] }
@@ -231,16 +312,6 @@ export default function NewInvoicePage() {
     setBuyerEmail("")
   }
 
-  useEffect(() => {
-    if (focusLastRow && tableBodyRef.current) {
-      setFocusLastRow(false)
-      const rows = tableBodyRef.current.querySelectorAll("tr")
-      const lastRow = rows[rows.length - 1]
-      const firstInput = lastRow?.querySelector<HTMLInputElement>("input")
-      firstInput?.focus()
-    }
-  }, [focusLastRow, lineItems])
-
   function addItem() {
     setLineItems([...lineItems, newItem(nextId)])
     setNextId(nextId + 1)
@@ -252,8 +323,14 @@ export default function NewInvoicePage() {
     setFocusLastRow(true)
   }
 
+  function addSectionItem(section: "regular" | "diamond" | "jewelry") {
+    setLineItems(prev => [...prev, newItem(nextId)])
+    setNextId(prev => prev + 1)
+    setFocusSection(section)
+  }
+
   function removeItem(id: number) {
-    if (lineItems.length > 1) setLineItems(lineItems.filter(i => i.id !== id))
+    if (lineItems.length > 1 || editId) setLineItems(lineItems.filter(i => i.id !== id))
   }
 
   function updateItem(id: number, field: keyof LineItem, value: string) {
@@ -304,33 +381,61 @@ export default function NewInvoicePage() {
         if (!item.inventoryItemId || !item.weight || !item.totalPrice) throw new Error("Fill in all required item fields")
         const inv = inventory.find(i => i.id === item.inventoryItemId)
         // Skip weight check when converting from memo — API restores availableWeight before decrementing
-        if (inv && !memoItemIds.length && parseFloat(item.weight) > inv.availableWeight) {
-          throw new Error(`Weight for "${inv.name}" exceeds available (${inv.availableWeight.toFixed(3)} ${unitLabels[inv.weightUnit]})`)
+        if (inv && !memoItemIds.length) {
+          // When editing, the item's original weight is already deducted from availableWeight, so add it back for comparison
+          const effectiveAvailable = inv.availableWeight + (item.dbWeight ?? 0)
+          if (parseFloat(item.weight) > effectiveAvailable) {
+            throw new Error(`Weight for "${inv.name}" exceeds available (${effectiveAvailable.toFixed(3)} ${unitLabels[inv.weightUnit]})`)
+          }
         }
       }
-      const res = await fetch("/api/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: selectedCustomerId || null,
-          buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes,
-          memoItemIds: memoItemIds.length ? memoItemIds : undefined,
-          items: lineItems.map(item => {
-            const inv = inventory.find(i => i.id === item.inventoryItemId)
-            return {
-              inventoryItemId: item.inventoryItemId,
+      if (editId) {
+        const keptDbIds = lineItems.filter(i => i.dbId).map(i => i.dbId!)
+        const removedIds = originalDbIds.filter(id => !keptDbIds.includes(id))
+        const res = await fetch(`/api/invoices/${editId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes,
+            removeItemIds: removedIds.length > 0 ? removedIds : undefined,
+            items: lineItems.filter(i => i.dbId).map(item => ({
+              id: item.dbId,
               description: item.description,
               weight: parseFloat(item.weight),
-              weightUnit: inv?.weightUnit || "GRAM",
               pricePerUnit: parseFloat(item.pricePerUnit) || 0,
               totalPrice: parseFloat(item.totalPrice),
-            }
+            })),
           }),
-        }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to create invoice")
-      const invoice = await res.json()
-      router.push(`/documents/invoices/${invoice.id}`)
+        })
+        if (!res.ok) throw new Error((await res.json()).error || "Failed to save invoice")
+        const data = await res.json()
+        if (data.deleted) { router.push("/documents"); return }
+        router.push(`/documents/invoices/${editId}`)
+      } else {
+        const res = await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: selectedCustomerId || null,
+            buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes,
+            memoItemIds: memoItemIds.length ? memoItemIds : undefined,
+            items: lineItems.map(item => {
+              const inv = inventory.find(i => i.id === item.inventoryItemId)
+              return {
+                inventoryItemId: item.inventoryItemId,
+                description: item.description,
+                weight: parseFloat(item.weight),
+                weightUnit: inv?.weightUnit || "GRAM",
+                pricePerUnit: parseFloat(item.pricePerUnit) || 0,
+                totalPrice: parseFloat(item.totalPrice),
+              }
+            }),
+          }),
+        })
+        if (!res.ok) throw new Error((await res.json()).error || "Failed to create invoice")
+        const invoice = await res.json()
+        router.push(`/documents/invoices/${invoice.id}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -338,11 +443,129 @@ export default function NewInvoicePage() {
     }
   }
 
-  const visibleDefs = ALL_COLUMNS.filter(c => visibleCols[c.key] !== false)
+  const costKeys = ["costPerUnit", "totalCost"]
+  const visibleDefs = ALL_COLUMNS.filter(c => visibleCols[c.key] !== false && (!costKeys.includes(c.key) || !hideCost))
 
   const cellClass = "border-r border-gray-200 last:border-r-0 px-2 py-1"
   const inputClass = "w-full px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50 rounded"
   const numInputClass = inputClass + " text-right"
+
+  // Inventory subsets for each section's combobox
+  const regularInventory = inventory.filter(i => !i.diamondDetails && !i.jewelryDetails)
+  const diamondInventory = inventory.filter(i => !!i.diamondDetails)
+  const jewelryInventory = inventory.filter(i => !!i.jewelryDetails)
+
+  // Compute 3 groups from single lineItems array
+  const regularItems = lineItems.filter(i => {
+    if (!i.inventoryItemId) return true // unassigned goes to regular
+    const inv = inventory.find(x => x.id === i.inventoryItemId)
+    return inv ? !inv.diamondDetails && !inv.jewelryDetails : true
+  })
+  const diamondItemsList = lineItems.filter(i => {
+    const inv = inventory.find(x => x.id === i.inventoryItemId)
+    return !!inv?.diamondDetails
+  })
+  const jewelryItemsList = lineItems.filter(i => {
+    const inv = inventory.find(x => x.id === i.inventoryItemId)
+    return !!inv?.jewelryDetails
+  })
+
+  function renderTableRows(items: LineItem[], sectionItems: LineItem[], sectionAddFn: () => void, tbodyRef: React.RefObject<HTMLTableSectionElement | null>) {
+    return items.map(item => {
+      const inv = inventory.find(i => i.id === item.inventoryItemId)
+      const unit = inv ? unitLabels[inv.weightUnit] || "g" : "g"
+      const isLastRow = item.id === sectionItems[sectionItems.length - 1]?.id
+      const lastColKey = visibleDefs[visibleDefs.length - 1].key
+      function tabProps(colKey: string) {
+        return {
+          onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+            arrowNav(e)
+            if (e.key === "Tab" && !e.shiftKey && isLastRow && colKey === lastColKey) { e.preventDefault(); sectionAddFn() }
+          }
+        }
+      }
+      return (
+        <tr key={item.id} className="hover:bg-gray-50 group">
+          {visibleDefs.map(col => (
+            <td key={col.key} className={`${cellClass} align-middle`}>
+              {col.key === "item" && (
+                <InventoryCombobox
+                  inventory={
+                    inv?.diamondDetails ? diamondInventory
+                    : inv?.jewelryDetails ? jewelryInventory
+                    : !item.inventoryItemId ? (
+                      tbodyRef === diamondBodyRef ? diamondInventory
+                      : tbodyRef === jewelryBodyRef ? jewelryInventory
+                      : regularInventory
+                    )
+                    : regularInventory
+                  }
+                  value={item.inventoryItemId}
+                  onChange={id => updateItem(item.id, "inventoryItemId", id)}
+                  onTabKey={isLastRow && lastColKey === "item" ? sectionAddFn : undefined}
+                />
+              )}
+              {col.key === "description" && (
+                <input value={item.description} placeholder="Description"
+                  onChange={e => updateItem(item.id, "description", e.target.value)}
+                  className={inputClass + " min-w-[140px]"} {...tabProps("description")} />
+              )}
+              {col.key === "weight" && (
+                <div className="flex items-center gap-1 min-w-[100px]">
+                  <input type="number" step="0.0001" required placeholder="0.000" value={item.weight}
+                    onChange={e => updateItem(item.id, "weight", e.target.value)}
+                    className={numInputClass} {...tabProps("weight")} />
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{unit}</span>
+                </div>
+              )}
+              {col.key === "pricePerUnit" && (
+                <div className="flex items-center gap-0.5 min-w-[110px]">
+                  <span className="text-gray-400 text-sm">$</span>
+                  <input type="number" step="0.0001" placeholder="0.00" value={item.pricePerUnit}
+                    onChange={e => updateItem(item.id, "pricePerUnit", e.target.value)}
+                    className={numInputClass} {...tabProps("pricePerUnit")} />
+                  <span className="text-xs text-gray-400">/{unit}</span>
+                </div>
+              )}
+              {col.key === "totalPrice" && (
+                <div className="flex items-center gap-0.5 min-w-[100px]">
+                  <span className="text-gray-400 text-sm">$</span>
+                  <input type="number" step="0.01" required placeholder="0.00" value={item.totalPrice}
+                    onChange={e => updateItem(item.id, "totalPrice", e.target.value)}
+                    className={numInputClass + " font-medium"} {...tabProps("totalPrice")} />
+                </div>
+              )}
+              {col.key === "costPerUnit" && (() => {
+                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                return (
+                  <span className="text-sm text-gray-500 whitespace-nowrap">
+                    ${cpu.toFixed(2)}/{unit}
+                  </span>
+                )
+              })()}
+              {col.key === "totalCost" && (() => {
+                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                const lineCost = cpu * (parseFloat(item.weight) || 0)
+                return (
+                  <span className="text-sm text-gray-500 whitespace-nowrap">
+                    ${lineCost.toFixed(2)}
+                  </span>
+                )
+              })()}
+            </td>
+          ))}
+          <td className="px-2 text-center align-middle w-8">
+            {(lineItems.length > 1 || editId) && (
+              <button type="button" onClick={() => removeItem(item.id)}
+                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                ×
+              </button>
+            )}
+          </td>
+        </tr>
+      )
+    })
+  }
 
   if (status === "loading" || !session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
@@ -352,7 +575,7 @@ export default function NewInvoicePage() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
           <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">New Invoice</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Invoice${invoiceNumber ? ` — ${invoiceNumber}` : ""}` : "New Invoice"}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -402,9 +625,34 @@ export default function NewInvoicePage() {
             </div>
           </div>
 
-          {/* Spreadsheet Items */}
+          {/* Section toggles */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={showDiamonds} onChange={() => {
+                if (!showDiamonds && diamondItemsList.length === 0) {
+                  setLineItems(prev => [...prev, newItem(nextId)])
+                  setNextId(prev => prev + 1)
+                }
+                setShowDiamonds(!showDiamonds)
+              }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">Single Diamonds</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={showJewelry} onChange={() => {
+                if (!showJewelry && jewelryItemsList.length === 0) {
+                  setLineItems(prev => [...prev, newItem(nextId)])
+                  setNextId(prev => prev + 1)
+                }
+                setShowJewelry(!showJewelry)
+              }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">Jewelry</span>
+            </label>
+          </div>
+
+          {/* Regular Items Table */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            {/* Toolbar */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <span className="text-sm font-semibold text-gray-700">Items</span>
               <div className="flex items-center gap-3">
@@ -431,14 +679,13 @@ export default function NewInvoicePage() {
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={addItem}
+                <button type="button" onClick={() => addSectionItem("regular")}
                   className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
                   + Add Row
                 </button>
               </div>
             </div>
 
-            {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -452,91 +699,116 @@ export default function NewInvoicePage() {
                   </tr>
                 </thead>
                 <tbody ref={tableBodyRef} className="divide-y divide-gray-100">
-                  {lineItems.map(item => {
-                    const inv = inventory.find(i => i.id === item.inventoryItemId)
-                    const unit = inv ? unitLabels[inv.weightUnit] || "g" : "g"
-                    const isLastRow = item.id === lineItems[lineItems.length - 1].id
-                    const lastColKey = visibleDefs[visibleDefs.length - 1].key
-                    function tabProps(colKey: string) {
-                      return {
-                        onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-                          arrowNav(e)
-                          if (e.key === "Tab" && !e.shiftKey && isLastRow && colKey === lastColKey) { e.preventDefault(); addItemAndFocus() }
-                        }
-                      }
-                    }
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50 group">
-                        {visibleDefs.map(col => (
-                          <td key={col.key} className={`${cellClass} align-middle`}>
-                            {col.key === "item" && (
-                              <InventoryCombobox
-                                inventory={inventory}
-                                value={item.inventoryItemId}
-                                onChange={id => updateItem(item.id, "inventoryItemId", id)}
-                                onTabKey={isLastRow && lastColKey === "item" ? addItemAndFocus : undefined}
-                              />
-                            )}
-                            {col.key === "description" && (
-                              <input value={item.description} placeholder="Description"
-                                onChange={e => updateItem(item.id, "description", e.target.value)}
-                                className={inputClass + " min-w-[140px]"}
-                                {...tabProps("description")} />
-                            )}
-                            {col.key === "weight" && (
-                              <div className="flex items-center gap-1 min-w-[100px]">
-                                <input type="number" step="0.0001" required placeholder="0.000" value={item.weight}
-                                  onChange={e => updateItem(item.id, "weight", e.target.value)}
-                                  className={numInputClass}
-                                  {...tabProps("weight")} />
-                                <span className="text-xs text-gray-400 whitespace-nowrap">{unit}</span>
-                              </div>
-                            )}
-                            {col.key === "pricePerUnit" && (
-                              <div className="flex items-center gap-0.5 min-w-[110px]">
-                                <span className="text-gray-400 text-sm">$</span>
-                                <input type="number" step="0.0001" placeholder="0.00" value={item.pricePerUnit}
-                                  onChange={e => updateItem(item.id, "pricePerUnit", e.target.value)}
-                                  className={numInputClass}
-                                  {...tabProps("pricePerUnit")} />
-                                <span className="text-xs text-gray-400">/{unit}</span>
-                              </div>
-                            )}
-                            {col.key === "totalPrice" && (
-                              <div className="flex items-center gap-0.5 min-w-[100px]">
-                                <span className="text-gray-400 text-sm">$</span>
-                                <input type="number" step="0.01" required placeholder="0.00" value={item.totalPrice}
-                                  onChange={e => updateItem(item.id, "totalPrice", e.target.value)}
-                                  className={numInputClass + " font-medium"}
-                                  {...tabProps("totalPrice")} />
-                              </div>
-                            )}
-                          </td>
-                        ))}
-                        <td className="px-2 text-center align-middle w-8">
-                          {lineItems.length > 1 && (
-                            <button type="button" onClick={() => removeItem(item.id)}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
-                              ×
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {renderTableRows(regularItems, regularItems, () => addSectionItem("regular"), tableBodyRef)}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-200 bg-gray-50">
-                    <td colSpan={visibleDefs.length} className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
-                      Total
-                    </td>
-                    <td className="px-2 py-2 text-right text-sm font-bold text-green-600 whitespace-nowrap pr-10">
-                      ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
+          </div>
+
+          {/* Single Diamonds Table */}
+          {showDiamonds && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <span className="text-sm font-semibold text-gray-700">Single Diamonds</span>
+                <button type="button" onClick={() => addSectionItem("diamond")}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
+                  + Add Row
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {visibleDefs.map(col => (
+                        <th key={col.key} className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>
+                          {col.key === "item" ? "Item / Inventory" : col.label}
+                        </th>
+                      ))}
+                      <th className="px-2 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody ref={diamondBodyRef} className="divide-y divide-gray-100">
+                    {renderTableRows(diamondItemsList, diamondItemsList, () => addSectionItem("diamond"), diamondBodyRef)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Jewelry Table */}
+          {showJewelry && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <span className="text-sm font-semibold text-gray-700">Jewelry</span>
+                <button type="button" onClick={() => addSectionItem("jewelry")}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
+                  + Add Row
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {visibleDefs.map(col => (
+                        <th key={col.key} className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>
+                          {col.key === "item" ? "Item / Inventory" : col.label}
+                        </th>
+                      ))}
+                      <th className="px-2 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody ref={jewelryBodyRef} className="divide-y divide-gray-100">
+                    {renderTableRows(jewelryItemsList, jewelryItemsList, () => addSectionItem("jewelry"), jewelryBodyRef)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Totals */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full text-sm border-collapse">
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2 text-right text-sm font-semibold text-gray-600">Total</td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-green-600 whitespace-nowrap w-36">
+                    ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+                {!hideCost && (() => {
+                  const totalCost = lineItems.reduce((s, item) => {
+                    const inv = inventory.find(i => i.id === item.inventoryItemId)
+                    const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                    return s + cpu * (parseFloat(item.weight) || 0)
+                  }, 0)
+                  const totalProfit = grandTotal - totalCost
+                  return (
+                    <>
+                      <tr className="bg-gray-50">
+                        <td className="px-4 py-1 text-right text-sm text-gray-500">Total Cost</td>
+                        <td className="px-4 py-1 text-right text-sm text-gray-500 whitespace-nowrap w-36">
+                          ${totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                      <tr className="bg-gray-50">
+                        <td className="px-4 py-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
+                        <td className="px-4 py-1 text-right text-sm font-semibold text-gray-700 whitespace-nowrap w-36">
+                          ${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    </>
+                  )
+                })()}
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="px-1">
+            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+              <input type="checkbox" checked={hideCost} onChange={e => setHideCost(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              Hide cost and profit
+            </label>
           </div>
 
           {/* Notes */}
@@ -551,7 +823,7 @@ export default function NewInvoicePage() {
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "Creating..." : "Create Invoice"}
+              {loading ? "Saving..." : editId ? "Save Changes" : "Create Invoice"}
             </button>
           </div>
         </form>

@@ -15,7 +15,7 @@ export async function GET(
     where: { id },
     include: {
       items: {
-        include: { inventoryItem: { select: { id: true, name: true, weightUnit: true } } },
+        include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true } } },
       },
     },
   })
@@ -55,14 +55,57 @@ export async function PATCH(
   }
 
   // Field edit update
-  const { customerName, customerEmail, customerPhone, returnDate, notes, items } = body
+  const { customerName, customerEmail, customerPhone, returnDate, notes, items, removeItemIds } = body
+
+  // Delete removed items and reverse inventory effects
+  if (removeItemIds?.length) {
+    for (const itemId of removeItemIds) {
+      const item = await prisma.memoItem.findUnique({ where: { id: itemId } })
+      if (!item) continue
+
+      // Restore availableWeight for active items
+      if (item.status === "ACTIVE") {
+        await prisma.inventoryItem.update({
+          where: { id: item.inventoryItemId },
+          data: { availableWeight: { increment: item.weight } },
+        })
+      }
+
+      await prisma.memoItem.delete({ where: { id: itemId } })
+    }
+
+    // If no items remain, delete the memo
+    const remaining = await prisma.memoItem.count({ where: { memoId: id } })
+    if (remaining === 0) {
+      await prisma.memo.delete({ where: { id } })
+      return NextResponse.json({ deleted: true })
+    }
+  }
 
   if (items?.length) {
     for (const item of items) {
+      const existing = await prisma.memoItem.findUnique({ where: { id: item.id } })
+      if (!existing) continue
+
+      const weightDelta = (item.weight ?? existing.weight) - existing.weight
+
       await prisma.memoItem.update({
         where: { id: item.id },
-        data: { description: item.description, pricePerUnit: item.pricePerUnit, totalValue: item.totalValue },
+        data: {
+          description: item.description,
+          pricePerUnit: item.pricePerUnit,
+          totalValue: item.totalValue,
+          weight: item.weight ?? existing.weight,
+        },
       })
+
+      // Sync inventory: memo holds weight, so if weight changes adjust availableWeight
+      if (weightDelta !== 0) {
+        await prisma.inventoryItem.update({
+          where: { id: existing.inventoryItemId },
+          data: { availableWeight: { increment: -weightDelta } },
+        })
+      }
     }
   }
 
@@ -78,7 +121,7 @@ export async function PATCH(
       notes: notes ?? memo.notes,
       totalValue: newTotal,
     },
-    include: { items: { include: { inventoryItem: { select: { id: true, name: true, weightUnit: true } } } } },
+    include: { items: { include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true } } } } },
   })
 
   return NextResponse.json(updated)

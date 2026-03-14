@@ -30,6 +30,8 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
   const [query, setQuery] = useState(selected?.name || "")
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({})
 
   useEffect(() => { setQuery(selected?.name || "") }, [value, selected?.name])
 
@@ -40,6 +42,14 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
     document.addEventListener("mousedown", handle)
     return () => document.removeEventListener("mousedown", handle)
   }, [])
+
+  // Position dropdown using fixed positioning to escape overflow containers
+  useEffect(() => {
+    if (open && inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect()
+      setDropStyle({ position: "fixed", top: rect.bottom + 2, left: rect.left, minWidth: Math.max(rect.width, 260), zIndex: 50 })
+    }
+  }, [open])
 
   const filtered = query.trim() === "" || query === selected?.name
     ? inventory
@@ -61,7 +71,7 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
 
   return (
     <div ref={ref} className="relative min-w-[200px]">
-      <input value={query}
+      <input ref={inputRef} value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange("") }}
         onFocus={() => setOpen(true)}
         onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && onTabKey) { e.preventDefault(); onTabKey() } }}
@@ -69,7 +79,7 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
         className="w-full px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50 rounded"
       />
       {open && filtered.length > 0 && (
-        <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto min-w-[260px]">
+        <div style={dropStyle} className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
           {filtered.map(item => {
             const sub = subtitle(item)
             return (
@@ -84,7 +94,7 @@ function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
         </div>
       )}
       {open && filtered.length === 0 && query && (
-        <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400 min-w-[200px]">
+        <div style={dropStyle} className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400">
           No items found
         </div>
       )}
@@ -105,6 +115,7 @@ interface LineItem {
   id: number
   dbId?: string
   dbWeight?: number
+  section?: "regular" | "diamond" | "jewelry"
   inventoryItemId: string
   description: string
   weight: string
@@ -219,18 +230,23 @@ export default function NewInvoicePage() {
           setDate(new Date(invoice.date).toISOString().split("T")[0])
           setNotes(invoice.notes || "")
           setInvoiceNumber(invoice.invoiceNumber)
-          const rows: LineItem[] = invoice.items.map((item: { id: string; inventoryItemId: string; description: string; weight: number; pricePerUnit: number; totalPrice: number; costBasis?: number }, i: number) => ({
-            id: i + 1,
-            dbId: item.id,
-            dbWeight: item.weight,
-            inventoryItemId: item.inventoryItemId,
-            description: item.description,
-            weight: item.weight.toString(),
-            pricePerUnit: item.pricePerUnit.toString(),
-            totalPrice: item.totalPrice.toString(),
-            lastEdited: "totalPrice" as const,
-            costPerUnit: item.costBasis && item.weight > 0 ? item.costBasis / item.weight : 0,
-          }))
+          const rows: LineItem[] = invoice.items.map((item: { id: string; inventoryItemId: string; description: string; weight: number; pricePerUnit: number; totalPrice: number; costBasis?: number }, i: number) => {
+            const invItem = inv.find(x => x.id === item.inventoryItemId)
+            const section: "regular" | "diamond" | "jewelry" = invItem?.diamondDetails ? "diamond" : invItem?.jewelryDetails ? "jewelry" : "regular"
+            return {
+              id: i + 1,
+              dbId: item.id,
+              dbWeight: item.weight,
+              section,
+              inventoryItemId: item.inventoryItemId,
+              description: item.description,
+              weight: item.weight.toString(),
+              pricePerUnit: item.pricePerUnit.toString(),
+              totalPrice: item.totalPrice.toString(),
+              lastEdited: "totalPrice" as const,
+              costPerUnit: item.costBasis && item.weight > 0 ? item.costBasis / item.weight : 0,
+            }
+          })
           setLineItems(rows)
           setNextId(rows.length + 1)
           setOriginalDbIds(invoice.items.map((item: { id: string }) => item.id))
@@ -324,7 +340,7 @@ export default function NewInvoicePage() {
   }
 
   function addSectionItem(section: "regular" | "diamond" | "jewelry") {
-    setLineItems(prev => [...prev, newItem(nextId)])
+    setLineItems(prev => [...prev, { ...newItem(nextId), section }])
     setNextId(prev => prev + 1)
     setFocusSection(section)
   }
@@ -392,6 +408,7 @@ export default function NewInvoicePage() {
       if (editId) {
         const keptDbIds = lineItems.filter(i => i.dbId).map(i => i.dbId!)
         const removedIds = originalDbIds.filter(id => !keptDbIds.includes(id))
+        const newLineItems = lineItems.filter(i => !i.dbId && i.inventoryItemId && i.weight && i.totalPrice)
         const res = await fetch(`/api/invoices/${editId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -405,6 +422,17 @@ export default function NewInvoicePage() {
               pricePerUnit: parseFloat(item.pricePerUnit) || 0,
               totalPrice: parseFloat(item.totalPrice),
             })),
+            newItems: newLineItems.length > 0 ? newLineItems.map(item => {
+              const inv = inventory.find(i => i.id === item.inventoryItemId)
+              return {
+                inventoryItemId: item.inventoryItemId,
+                description: item.description,
+                weight: parseFloat(item.weight),
+                weightUnit: inv?.weightUnit || "GRAM",
+                pricePerUnit: parseFloat(item.pricePerUnit) || 0,
+                totalPrice: parseFloat(item.totalPrice),
+              }
+            }) : undefined,
           }),
         })
         if (!res.ok) throw new Error((await res.json()).error || "Failed to save invoice")
@@ -457,15 +485,18 @@ export default function NewInvoicePage() {
 
   // Compute 3 groups from single lineItems array
   const regularItems = lineItems.filter(i => {
-    if (!i.inventoryItemId) return true // unassigned goes to regular
+    if (i.section) return i.section === "regular"
+    if (!i.inventoryItemId) return true
     const inv = inventory.find(x => x.id === i.inventoryItemId)
     return inv ? !inv.diamondDetails && !inv.jewelryDetails : true
   })
   const diamondItemsList = lineItems.filter(i => {
+    if (i.section) return i.section === "diamond"
     const inv = inventory.find(x => x.id === i.inventoryItemId)
     return !!inv?.diamondDetails
   })
   const jewelryItemsList = lineItems.filter(i => {
+    if (i.section) return i.section === "jewelry"
     const inv = inventory.find(x => x.id === i.inventoryItemId)
     return !!inv?.jewelryDetails
   })
@@ -630,7 +661,7 @@ export default function NewInvoicePage() {
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={showDiamonds} onChange={() => {
                 if (!showDiamonds && diamondItemsList.length === 0) {
-                  setLineItems(prev => [...prev, newItem(nextId)])
+                  setLineItems(prev => [...prev, { ...newItem(nextId), section: "diamond" as const }])
                   setNextId(prev => prev + 1)
                 }
                 setShowDiamonds(!showDiamonds)
@@ -641,7 +672,7 @@ export default function NewInvoicePage() {
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={showJewelry} onChange={() => {
                 if (!showJewelry && jewelryItemsList.length === 0) {
-                  setLineItems(prev => [...prev, newItem(nextId)])
+                  setLineItems(prev => [...prev, { ...newItem(nextId), section: "jewelry" as const }])
                   setNextId(prev => prev + 1)
                 }
                 setShowJewelry(!showJewelry)
@@ -652,7 +683,7 @@ export default function NewInvoicePage() {
           </div>
 
           {/* Regular Items Table */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="bg-white rounded-lg shadow">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <span className="text-sm font-semibold text-gray-700">Items</span>
               <div className="flex items-center gap-3">
@@ -707,7 +738,7 @@ export default function NewInvoicePage() {
 
           {/* Single Diamonds Table */}
           {showDiamonds && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
                 <span className="text-sm font-semibold text-gray-700">Single Diamonds</span>
                 <button type="button" onClick={() => addSectionItem("diamond")}
@@ -737,7 +768,7 @@ export default function NewInvoicePage() {
 
           {/* Jewelry Table */}
           {showJewelry && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-lg shadow">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
                 <span className="text-sm font-semibold text-gray-700">Jewelry</span>
                 <button type="button" onClick={() => addSectionItem("jewelry")}

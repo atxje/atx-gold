@@ -592,6 +592,8 @@ function NewPurchaseForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    if (payments.length === 0) { setError("Please select at least one payment method"); return }
+    if (Math.abs(paymentDiff) > 0.01) { setError(`Payment total ($${paymentTotal.toFixed(2)}) must equal purchase total ($${grandTotal.toFixed(2)})`); return }
     setLoading(true)
     try {
       if (editId) {

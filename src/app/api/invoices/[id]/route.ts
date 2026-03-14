@@ -33,7 +33,7 @@ export async function PATCH(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const { buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes, items, removeItemIds } = await request.json()
+  const { buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes, items, removeItemIds, newItems } = await request.json()
 
   // Remove rows: reverse their inventory effects then delete them
   if (removeItemIds?.length) {
@@ -138,14 +138,55 @@ export async function PATCH(
     }
   }
 
-  const newTotal = items?.reduce((s: number, i: { totalPrice: number }) => s + i.totalPrice, 0)
+  // Add new items to existing invoice
+  let newItemsTotal = 0
+  if (newItems?.length) {
+    for (const item of newItems) {
+      const invItem = await prisma.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
+      if (!invItem) continue
+
+      const avgCostPerUnit = invItem.totalWeight > 0 ? invItem.totalCost / invItem.totalWeight : 0
+      const costBasis = avgCostPerUnit * item.weight
+      const profit = item.totalPrice - costBasis
+      newItemsTotal += item.totalPrice
+
+      await prisma.invoiceItem.create({
+        data: {
+          invoiceId: id,
+          inventoryItemId: item.inventoryItemId,
+          description: item.description,
+          weight: item.weight,
+          weightUnit: item.weightUnit || invItem.weightUnit,
+          pricePerUnit: item.pricePerUnit,
+          totalPrice: item.totalPrice,
+          costBasis,
+          profit,
+        },
+      })
+
+      await prisma.inventoryItem.update({
+        where: { id: item.inventoryItemId },
+        data: {
+          availableWeight: { decrement: item.weight },
+          soldWeight: { increment: item.weight },
+          soldValue: { increment: item.totalPrice },
+          totalProfit: { increment: profit },
+          totalCost: { decrement: costBasis },
+        },
+      })
+    }
+  }
+
+  // Recalculate total from all current items
+  const allInvoiceItems = await prisma.invoiceItem.findMany({ where: { invoiceId: id } })
+  const recalcTotal = allInvoiceItems.reduce((s, i) => s + i.totalPrice, 0)
 
   const updated = await prisma.invoice.update({
     where: { id },
     data: {
       buyerName, buyerEmail, buyerPhone, buyerAddress, notes,
       date: date ? new Date(date) : undefined,
-      ...(newTotal !== undefined && { totalAmount: newTotal }),
+      totalAmount: recalcTotal,
     },
     include: { items: { include: { inventoryItem: { select: { id: true, name: true, weightUnit: true } } } } },
   })

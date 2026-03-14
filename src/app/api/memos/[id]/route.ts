@@ -55,7 +55,7 @@ export async function PATCH(
   }
 
   // Field edit update
-  const { customerName, customerEmail, customerPhone, returnDate, notes, items, removeItemIds } = body
+  const { customerName, customerEmail, customerPhone, returnDate, notes, items, removeItemIds, newItems } = body
 
   // Delete removed items and reverse inventory effects
   if (removeItemIds?.length) {
@@ -109,7 +109,34 @@ export async function PATCH(
     }
   }
 
-  const newTotal = items?.reduce((s: number, i: { totalValue: number }) => s + i.totalValue, 0) ?? memo.totalValue
+  // Add new items to existing memo
+  if (newItems?.length) {
+    for (const item of newItems) {
+      const invItem = await prisma.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
+      if (!invItem) continue
+
+      await prisma.memoItem.create({
+        data: {
+          memoId: id,
+          inventoryItemId: item.inventoryItemId,
+          description: item.description,
+          weight: item.weight,
+          weightUnit: item.weightUnit || invItem.weightUnit,
+          pricePerUnit: item.pricePerUnit,
+          totalValue: item.totalValue,
+        },
+      })
+
+      await prisma.inventoryItem.update({
+        where: { id: item.inventoryItemId },
+        data: { availableWeight: { decrement: item.weight } },
+      })
+    }
+  }
+
+  // Recalculate total from all current items
+  const allMemoItems = await prisma.memoItem.findMany({ where: { memoId: id } })
+  const recalcTotal = allMemoItems.reduce((s, i) => s + i.totalValue, 0)
 
   const updated = await prisma.memo.update({
     where: { id },
@@ -119,7 +146,7 @@ export async function PATCH(
       customerPhone: customerPhone ?? memo.customerPhone,
       returnDate: returnDate ? new Date(returnDate) : memo.returnDate,
       notes: notes ?? memo.notes,
-      totalValue: newTotal,
+      totalValue: recalcTotal,
     },
     include: { items: { include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true } } } } },
   })

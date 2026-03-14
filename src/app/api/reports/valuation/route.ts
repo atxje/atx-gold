@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const asOfParam = searchParams.get("asOf")
   // Add 1-day buffer to account for timezone shifts (dates stored as next-day UTC midnight)
+  const isPointInTime = !!asOfParam
   const asOf = asOfParam
     ? new Date(new Date(asOfParam + "T23:59:59.999Z").getTime() + 24 * 60 * 60 * 1000)
     : new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -84,6 +85,10 @@ export async function GET(request: Request) {
   }
 
   // 4. Memos created up to asOf
+  // We don't have timestamps for when items were returned/converted, so for point-in-time
+  // queries, we treat all memo items created before asOf as on-memo (availableWeight--)
+  // unless the memo has no active items left (fully resolved). The invoice section already
+  // handles soldWeight for converted items without touching availableWeight.
   const memoItems = await prisma.memoItem.findMany({
     include: { memo: { select: { memoDate: true } } },
   })
@@ -91,12 +96,15 @@ export async function GET(request: Request) {
     if (mi.memo.memoDate > asOf) continue
     const s = state.get(mi.inventoryItemId)
     if (!s) continue
+    // Memo creation takes weight out of available
     s.availableWeight -= mi.weight
-    if (mi.status === "RETURNED") {
-      s.availableWeight += mi.weight
-    }
-    if (mi.status === "CONVERTED") {
-      s.availableWeight += mi.weight
+    // For "current" valuation (no date filter / today), apply actual status
+    // RETURNED: weight goes back to available
+    // CONVERTED: weight stays out (it was sold via invoice, tracked in soldWeight)
+    if (!isPointInTime) {
+      if (mi.status === "RETURNED") {
+        s.availableWeight += mi.weight
+      }
     }
   }
 

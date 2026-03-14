@@ -173,17 +173,30 @@ export default function ReportsPage() {
     purchByCat.set(cat, entry)
   })
 
-  // === PURCHASES payment breakdown ===
+  // === PURCHASES payment breakdown (count once per document, not per line item) ===
   const paymentBreakdown = new Map<string, number>()
   let noPaymentInfo = 0
+  const seenPurchaseNumbers = new Set<string>()
   purchases.forEach(p => {
-    if (!p.paymentMethod) { noPaymentInfo += p.pricePaid; return }
+    // Skip duplicate payment counting for same purchase document
+    const key = p.purchaseNumber || p.id
+    if (seenPurchaseNumbers.has(key)) return
+    seenPurchaseNumbers.add(key)
+    if (!p.paymentMethod) {
+      // Sum the full document total, not just this row
+      const docItems = purchaseDocMap.get(key) || [p]
+      noPaymentInfo += docItems.reduce((s, item) => s + item.pricePaid, 0)
+      return
+    }
     try {
       const methods: { method: string; amount: number }[] = JSON.parse(p.paymentMethod)
       methods.forEach(m => {
         paymentBreakdown.set(m.method, (paymentBreakdown.get(m.method) || 0) + m.amount)
       })
-    } catch { noPaymentInfo += p.pricePaid }
+    } catch {
+      const docItems = purchaseDocMap.get(key) || [p]
+      noPaymentInfo += docItems.reduce((s, item) => s + item.pricePaid, 0)
+    }
   })
   const totalCash = paymentBreakdown.get("Cash") || 0
   const totalNonCash = Array.from(paymentBreakdown.entries())

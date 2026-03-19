@@ -93,6 +93,7 @@ export async function PATCH(
         where: { id: item.id },
         data: {
           description: item.description,
+          quantity: item.quantity ?? existing.quantity,
           pricePerUnit: item.pricePerUnit,
           totalValue: item.totalValue,
           weight: item.weight ?? existing.weight,
@@ -120,6 +121,7 @@ export async function PATCH(
           memoId: id,
           inventoryItemId: item.inventoryItemId,
           description: item.description,
+          quantity: item.quantity ?? 0,
           weight: item.weight,
           weightUnit: item.weightUnit || invItem.weightUnit,
           pricePerUnit: item.pricePerUnit,

@@ -10,11 +10,11 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const asOfParam = searchParams.get("asOf")
-  // Add 1-day buffer to account for timezone shifts (dates stored as next-day UTC midnight)
+  // Dates are stored as UTC midnight (e.g. "2026-03-16" → 2026-03-16T00:00:00.000Z)
   const isPointInTime = !!asOfParam
   const asOf = asOfParam
-    ? new Date(new Date(asOfParam + "T23:59:59.999Z").getTime() + 24 * 60 * 60 * 1000)
-    : new Date(Date.now() + 24 * 60 * 60 * 1000)
+    ? new Date(asOfParam + "T23:59:59.999Z")
+    : new Date(Date.now() + 24 * 60 * 60 * 1000) // future date to include everything for "current"
 
   // Get all inventory items (even zeroed ones — they may have had stock at that date)
   const items = await prisma.inventoryItem.findMany()

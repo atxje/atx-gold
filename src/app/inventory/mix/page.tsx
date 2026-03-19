@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { InventoryPickerModal } from "@/components/inventory-picker"
 
 interface InventoryItem {
   id: string
@@ -34,60 +35,6 @@ const categories = {
   "COINS_GOLD":   { label: "Coins/Bars - Gold",   weightUnit: "TROY_OZ", subcategories: ["Gold Eagle", "Gold Maple", "Krugerrand", "PAMP", "VALCAMBI", "Credit Suisse", "Centenario"] },
 }
 
-function ItemCombobox({ inventory, value, onChange, exclude = [] }: {
-  inventory: InventoryItem[]
-  value: string
-  onChange: (id: string) => void
-  exclude?: string[]
-}) {
-  const selected = inventory.find(i => i.id === value)
-  const [query, setQuery] = useState(selected?.name || "")
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => { setQuery(selected?.name || "") }, [value, selected?.name])
-
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handle)
-    return () => document.removeEventListener("mousedown", handle)
-  }, [])
-
-  const filtered = inventory
-    .filter(i => !exclude.includes(i.id))
-    .filter(i => query.trim() === "" || query === selected?.name || i.name.toLowerCase().includes(query.toLowerCase()))
-
-  return (
-    <div ref={ref} className="relative min-w-[200px]">
-      <input value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange("") }}
-        onFocus={() => setOpen(true)}
-        placeholder="Type to search…"
-        className="w-full px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50 rounded" />
-      {open && filtered.length > 0 && (
-        <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto min-w-[260px]">
-          {filtered.map(item => (
-            <div key={item.id} onMouseDown={() => { setQuery(item.name); setOpen(false); onChange(item.id) }}
-              className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${item.id === value ? "bg-blue-50 font-medium" : ""}`}>
-              <div className="font-medium text-gray-900">{item.name}</div>
-              <div className="text-xs text-gray-400">
-                {item.availableWeight.toFixed(3)} {unitLabels[item.weightUnit]} avail · ${item.totalWeight > 0 ? (item.totalCost / item.totalWeight).toFixed(2) : "0.00"}/{unitLabels[item.weightUnit]}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {open && filtered.length === 0 && query && (
-        <div className="absolute z-30 left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400 min-w-[200px]">
-          No items found
-        </div>
-      )}
-    </div>
-  )
-}
-
 let rowCounter = 1
 
 function newRow(): SourceRow {
@@ -107,6 +54,8 @@ export default function MixPage() {
   const [destSubcategory, setDestSubcategory] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false)
+  const [destPickerOpen, setDestPickerOpen] = useState(false)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -146,6 +95,31 @@ export default function MixPage() {
         lastEdited: "costPerUnit",
       }
     }))
+  }
+
+  function addSourcesFromInventory(ids: string[]) {
+    const newRows: SourceRow[] = []
+    for (const invId of ids) {
+      if (sources.some(r => r.inventoryItemId === invId)) continue
+      const item = inventory.find(i => i.id === invId)
+      if (!item) continue
+      const avgCpu = item.totalWeight > 0 ? item.totalCost / item.totalWeight : 0
+      const w = item.availableWeight
+      newRows.push({
+        id: rowCounter++,
+        inventoryItemId: invId,
+        weight: w.toFixed(3),
+        costPerUnit: avgCpu.toFixed(4),
+        totalCost: (avgCpu * w).toFixed(2),
+        lastEdited: "costPerUnit",
+      })
+    }
+    if (newRows.length > 0) {
+      setSources(prev => {
+        const hasOnlyEmpty = prev.length === 1 && !prev[0].inventoryItemId
+        return hasOnlyEmpty ? newRows : [...prev, ...newRows]
+      })
+    }
   }
 
   function updateSource(rowId: number, field: "weight" | "costPerUnit" | "totalCost", value: string) {
@@ -259,9 +233,9 @@ export default function MixPage() {
                 <span className="text-sm font-semibold text-gray-700">Transfer From</span>
                 <span className="ml-2 text-xs text-gray-400">Items being reduced</span>
               </div>
-              <button type="button" onClick={() => setSources(p => [...p, newRow()])}
+              <button type="button" onClick={() => setSourcePickerOpen(true)}
                 className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
-                + Add Row
+                + Add from Inventory
               </button>
             </div>
             <div className="overflow-x-auto">
@@ -286,12 +260,9 @@ export default function MixPage() {
                     return (
                       <tr key={row.id} className="hover:bg-gray-50 group">
                         <td className={`${cellClass} align-top pt-2`}>
-                          <ItemCombobox
-                            inventory={inventory}
-                            value={row.inventoryItemId}
-                            onChange={id => selectSource(row.id, id)}
-                            exclude={sourceItemIds.filter(id => id !== row.inventoryItemId)}
-                          />
+                          <div className="min-w-[160px] px-2 py-1.5 text-sm text-gray-700 truncate">
+                            {item ? item.name : <span className="text-gray-300 italic">—</span>}
+                          </div>
                         </td>
                         <td className={`${cellClass} align-top pt-1`}>
                           <div className="flex items-center gap-1 min-w-[110px]">
@@ -401,12 +372,15 @@ export default function MixPage() {
                 <div className="flex items-start gap-4">
                   <div className="flex-1">
                     <label className="block text-xs font-medium text-gray-500 mb-1">Select Item</label>
-                    <ItemCombobox
-                      inventory={inventory}
-                      value={destItemId}
-                      onChange={setDestItemId}
-                      exclude={sourceItemIds}
-                    />
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm min-h-[38px]">
+                        {destItemId ? inventory.find(i => i.id === destItemId)?.name || "—" : <span className="text-gray-400">No item selected</span>}
+                      </div>
+                      <button type="button" onClick={() => setDestPickerOpen(true)}
+                        className="px-3 py-2 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 whitespace-nowrap">
+                        Choose
+                      </button>
+                    </div>
                   </div>
                   {destItemId && (() => {
                     const item = inventory.find(i => i.id === destItemId)!
@@ -471,6 +445,26 @@ export default function MixPage() {
             </button>
           </div>
         </form>
+
+        {sourcePickerOpen && (
+          <InventoryPickerModal
+            inventory={inventory}
+            exclude={sourceItemIds}
+            onAdd={addSourcesFromInventory}
+            onClose={() => setSourcePickerOpen(false)}
+            title="Select Source Items"
+          />
+        )}
+
+        {destPickerOpen && (
+          <InventoryPickerModal
+            inventory={inventory}
+            exclude={sourceItemIds}
+            onAdd={ids => { if (ids[0]) setDestItemId(ids[0]); }}
+            onClose={() => setDestPickerOpen(false)}
+            title="Select Destination Item"
+          />
+        )}
       </main>
     </div>
   )

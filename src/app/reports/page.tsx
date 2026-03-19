@@ -88,6 +88,7 @@ export default function ReportsPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  const [activeShortcut, setActiveShortcut] = useState("")
   const [valuationDate, setValuationDate] = useState("")
   const [valuationItems, setValuationItems] = useState<ValuationItem[]>([])
   const [valuationLoading, setValuationLoading] = useState(false)
@@ -237,10 +238,10 @@ export default function ReportsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
             <div className="flex items-center gap-3">
               <label className="text-sm text-gray-500">From</label>
-              <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              <input type="date" value={from} onChange={e => { setFrom(e.target.value); setActiveShortcut("") }}
                 className="border rounded px-2 py-1 text-sm" />
               <label className="text-sm text-gray-500">To</label>
-              <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              <input type="date" value={to} onChange={e => { setTo(e.target.value); setActiveShortcut("") }}
                 className="border rounded px-2 py-1 text-sm" />
               <button onClick={() => fetchData()}
                 className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
@@ -273,13 +274,11 @@ export default function ReportsPage() {
                 onClick={() => {
                   const [f, t] = shortcut.getRange()
                   setFrom(f); setTo(t)
+                  setActiveShortcut(shortcut.label)
                   fetchData(f, t)
                 }}
                 className={`px-3 py-1 rounded text-sm border ${
-                  (() => {
-                    const [f, t] = shortcut.getRange()
-                    return f === from && t === to
-                  })()
+                  activeShortcut === shortcut.label
                     ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-300 text-gray-600 hover:bg-gray-50"
                 }`}

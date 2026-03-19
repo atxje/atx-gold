@@ -47,6 +47,7 @@ interface InventoryItem {
   soldValue: number
   totalProfit: number
   askingPrice: number
+  quantity: number
   status: "ON_STOCK" | "OUT_ON_MEMO"
   purchases: { id: string }[]
   diamondDetails: DiamondDetails | null
@@ -54,6 +55,40 @@ interface InventoryItem {
 }
 
 const unitLabels: Record<string, string> = { GRAM: "g", TROY_OZ: "oz", CARAT: "ct" }
+
+// Grams per troy ounce
+const GRAMS_PER_TROY_OZ = 31.1035
+
+// Scrap gold: purity × 98% pay rate
+const GOLD_SCRAP_PURITY: Record<string, number> = {
+  "10K": 0.395, "14K": 0.565, "18K": 0.73, "21K+": 0.875, "22K": 0.9167, "24K": 0.99, "Mixed W/D": 0,
+}
+const GOLD_SCRAP_PAY_RATE = 0.98
+
+// Scrap silver: 92.5% purity × 91.5% pay rate
+const SILVER_SCRAP_PURITY: Record<string, number> = {
+  "Sterling Jewelry": 0.925, "Silverware": 0.925,
+}
+const SILVER_SCRAP_PAY_RATE = 0.915
+
+// Bullion — full spot, no discount (coins/bars)
+const GOLD_BULLION_PURITY: Record<string, number> = {
+  "Gold American Eagle": 1, "Gold Maple": 1, "Krugerrand": 1,
+  "PAMP Bar": 1, "VALCAMBI Bar": 1, "Credit Suisse Bar": 1, "Centenario": 0.9,
+  "1 gram bar": 1, "2.5 gram bar": 1, "5 gram bar": 1, "10 gram bar": 1, "20 gram bar": 1, "100 gram bar": 1,
+}
+const SILVER_BULLION_PURITY: Record<string, number> = {
+  "Silver Eagle": 1, "Silver Buffalo": 1, "Silver Generics": 0.999, "Silver Dollar (Peace/Morgan)": 1,
+}
+
+// Jewelry metal — same scrap rates as gold/silver scrap
+const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver"; purity: number; payRate: number }> = {
+  "10K": { metal: "gold", purity: 0.395, payRate: GOLD_SCRAP_PAY_RATE },
+  "14K": { metal: "gold", purity: 0.565, payRate: GOLD_SCRAP_PAY_RATE },
+  "18K": { metal: "gold", purity: 0.73, payRate: GOLD_SCRAP_PAY_RATE },
+  "Plat": { metal: "gold", purity: 0, payRate: 0 },
+  "Sterling": { metal: "silver", purity: 0.925, payRate: SILVER_SCRAP_PAY_RATE },
+}
 
 export default function InventoryPage() {
   const { data: session, status } = useSession()
@@ -71,6 +106,64 @@ export default function InventoryPage() {
   const [goldCategoryNames, setGoldCategoryNames] = useState<Set<string>>(new Set())
   const [silverCategoryNames, setSilverCategoryNames] = useState<Set<string>>(new Set())
   const [diamondSubcatKeys, setDiamondSubcatKeys] = useState<Set<string>>(new Set())
+  const [showSold, setShowSold] = useState(false)
+  const [spotPrices, setSpotPrices] = useState<{ gold: number; silver: number; timestamp: string } | null>(null)
+  const [spotLoading, setSpotLoading] = useState(false)
+
+  async function fetchSpotPrices() {
+    setSpotLoading(true)
+    try {
+      const res = await fetch("/api/spot-prices")
+      if (res.ok) setSpotPrices(await res.json())
+    } catch { /* ignore */ }
+    finally { setSpotLoading(false) }
+  }
+
+  function meltValue(item: InventoryItem): number | null {
+    if (!spotPrices) return null
+    const weight = item.availableWeight
+    if (weight <= 0) return null
+
+    if (goldCategoryNames.has(item.category)) {
+      // Scrap gold: purity × pay rate × spot per gram
+      const scrapPurity = GOLD_SCRAP_PURITY[item.subcategory]
+      if (scrapPurity !== undefined && scrapPurity > 0 && item.weightUnit === "GRAM") {
+        const spotPerGram = spotPrices.gold / GRAMS_PER_TROY_OZ
+        return weight * scrapPurity * GOLD_SCRAP_PAY_RATE * spotPerGram
+      }
+      // Gold bullion: full spot
+      const bullionPurity = GOLD_BULLION_PURITY[item.subcategory]
+      if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ") {
+        return weight * bullionPurity * spotPrices.gold
+      }
+    }
+
+    if (silverCategoryNames.has(item.category)) {
+      // Scrap silver: purity × pay rate × spot per gram
+      const scrapPurity = SILVER_SCRAP_PURITY[item.subcategory]
+      if (scrapPurity !== undefined && item.weightUnit === "GRAM") {
+        const spotPerGram = spotPrices.silver / GRAMS_PER_TROY_OZ
+        return weight * scrapPurity * SILVER_SCRAP_PAY_RATE * spotPerGram
+      }
+      // Silver bullion: full spot
+      const bullionPurity = SILVER_BULLION_PURITY[item.subcategory]
+      if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ") {
+        return weight * bullionPurity * spotPrices.silver
+      }
+    }
+
+    // Jewelry — same scrap formula based on metal type
+    if (item.jewelryDetails?.metal) {
+      const jm = JEWELRY_METAL_INFO[item.jewelryDetails.metal]
+      if (jm && jm.purity > 0) {
+        const spot = jm.metal === "gold" ? spotPrices.gold : spotPrices.silver
+        const spotPerGram = spot / GRAMS_PER_TROY_OZ
+        return weight * jm.purity * jm.payRate * spotPerGram
+      }
+    }
+
+    return null
+  }
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -165,7 +258,7 @@ export default function InventoryPage() {
     router.push(`${path}?items=${ids}`)
   }
 
-  const allActive = items.filter(i => (i.totalWeight - i.soldWeight) > 0.0005)
+  const allActive = showSold ? items : items.filter(i => (i.totalWeight - i.soldWeight) > 0.0005)
 
   // Build chip list: DB chips + any inventory categories not in DB
   const chipKeys = new Set(allFilterChips.map(c => c.key))
@@ -198,6 +291,11 @@ export default function InventoryPage() {
   const isFiltered = filterCats.size > 0
   const activeItems = isFiltered ? allActive.filter(itemMatchesFilter) : allActive
   const filteredAll = isFiltered ? items.filter(itemMatchesFilter) : items
+  const goldScrapItems = activeItems.filter(i => goldCategoryNames.has(i.category) && i.weightUnit === "GRAM")
+  const goldBullionItems = activeItems.filter(i => goldCategoryNames.has(i.category) && i.weightUnit === "TROY_OZ")
+  const silverScrapItems = activeItems.filter(i => silverCategoryNames.has(i.category) && i.weightUnit === "GRAM")
+  const silverBullionItems = activeItems.filter(i => silverCategoryNames.has(i.category) && i.weightUnit === "TROY_OZ")
+  // Keep combined for backwards compat with filter logic
   const goldItems = activeItems.filter(i => goldCategoryNames.has(i.category))
   const silverItems = activeItems.filter(i => silverCategoryNames.has(i.category))
   const diamondItems = activeItems.filter(i => diamondCategoryNames.has(i.category))
@@ -263,6 +361,13 @@ export default function InventoryPage() {
               </>
             ) : (
               <>
+                <button onClick={fetchSpotPrices} disabled={spotLoading}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 text-sm disabled:opacity-50"
+                  title={spotPrices ? `Gold: $${spotPrices.gold.toFixed(2)}/oz | Silver: $${spotPrices.silver.toFixed(2)}/oz` : ""}>
+                  {spotLoading ? "Loading..." : spotPrices
+                    ? `Au $${spotPrices.gold.toFixed(0)} · Ag $${spotPrices.silver.toFixed(2)}`
+                    : "Fetch Spot Prices"}
+                </button>
                 <Link href="/inventory/mix" className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
                   Mix / Transfer
                 </Link>
@@ -327,6 +432,13 @@ export default function InventoryPage() {
                 {chip.label}
               </button>
             ))}
+            <div className="ml-auto">
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500">
+                <input type="checkbox" checked={showSold} onChange={() => setShowSold(v => !v)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                Show sold
+              </label>
+            </div>
           </div>
         )}
 
@@ -340,9 +452,11 @@ export default function InventoryPage() {
         ) : (
           <div className="space-y-8">
             {[
-              { title: "Gold & Platinum", items: goldItems },
-              { title: "Silver", items: silverItems },
-            ].map(({ title, items: sectionItems }) => sectionItems.length > 0 && (
+              { title: "Scrap Gold", items: goldScrapItems, showMelt: true },
+              { title: "Gold Bullion", items: goldBullionItems, showMelt: true },
+              { title: "Scrap Silver", items: silverScrapItems, showMelt: true },
+              { title: "Silver Bullion", items: silverBullionItems, showMelt: true },
+            ].map(({ title, items: sectionItems, showMelt }) => sectionItems.length > 0 && (
               <div key={title}>
                 <h2 className="text-lg font-semibold text-gray-800 mb-3">{title}</h2>
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
@@ -363,10 +477,12 @@ export default function InventoryPage() {
                             className="w-4 h-4 rounded border-gray-300 text-blue-600" />
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Office</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Memo</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        {spotPrices && <th className="px-4 py-3 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Avg/Unit</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ask/Unit</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sold</th>
@@ -381,6 +497,7 @@ export default function InventoryPage() {
                         const currentWeight = item.totalWeight - item.soldWeight
                         const avgPerUnit = currentWeight > 0 ? item.totalCost / currentWeight : 0
                         const profitPositive = item.totalProfit >= 0
+                        const melt = meltValue(item)
                         return (
                           <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
                             <td className="px-4 py-4 w-8">
@@ -393,6 +510,9 @@ export default function InventoryPage() {
                               <Link href={`/inventory/${item.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
                                 {item.itemCode ? item.name : (item.subcategory || item.name)}
                               </Link>
+                            </td>
+                            <td className="px-4 py-4 text-right text-sm text-gray-500">
+                              {item.quantity > 0 ? item.quantity : "—"}
                             </td>
                             <td className="px-4 py-4 text-right text-sm text-gray-700">
                               {currentWeight.toFixed(3)}{unit}
@@ -409,6 +529,11 @@ export default function InventoryPage() {
                             <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">
                               ${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                             </td>
+                            {spotPrices && (
+                              <td className="px-4 py-4 text-right text-sm font-medium text-amber-700">
+                                {melt !== null ? `$${melt.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
+                              </td>
+                            )}
                             <td className="px-4 py-4 text-right text-sm text-gray-500">
                               ${avgPerUnit.toFixed(2)}/{unit}
                             </td>
@@ -451,7 +576,12 @@ export default function InventoryPage() {
                         <td className="px-4 py-3 text-left text-sm font-bold text-orange-600">
                           ${sectionItems.reduce((s, i) => s + i.totalCost, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </td>
-                        <td colSpan={10} />
+                        {spotPrices && (
+                          <td className="px-4 py-3 text-left text-sm font-bold text-amber-700">
+                            Melt: ${sectionItems.reduce((s, i) => s + (meltValue(i) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          </td>
+                        )}
+                        <td colSpan={spotPrices ? 9 : 10} />
                       </tr>
                     </tfoot>
                   </table>
@@ -481,6 +611,7 @@ export default function InventoryPage() {
                             className="w-4 h-4 rounded border-gray-300 text-blue-600" />
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
@@ -506,6 +637,7 @@ export default function InventoryPage() {
                                 {item.itemCode ? item.name : (item.subcategory || item.name)}
                               </Link>
                             </td>
+                            <td className="px-4 py-4 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
                             <td className="px-4 py-4 text-right text-sm text-gray-700">{currentWeight.toFixed(3)}{unit}</td>
                             <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                             <td className="px-4 py-4 text-right text-sm text-blue-600 font-medium">
@@ -566,11 +698,13 @@ export default function InventoryPage() {
                             className="w-4 h-4 rounded border-gray-300 text-blue-600" />
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                         <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Metal</th>
                         <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
                         <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stone</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        {spotPrices && <th className="px-4 py-3 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">$/g</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ask/g</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
@@ -584,6 +718,7 @@ export default function InventoryPage() {
                         const currentWeight = item.totalWeight - item.soldWeight
                         const costPerG = currentWeight > 0 ? item.totalCost / currentWeight : (jd?.costPerGram || 0)
                         const profitPositive = item.totalProfit >= 0
+                        const melt = meltValue(item)
                         return (
                           <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
                             <td className="px-4 py-4 w-8">
@@ -597,6 +732,7 @@ export default function InventoryPage() {
                                 {item.itemCode ? item.name : (item.subcategory || item.name)}
                               </Link>
                             </td>
+                            <td className="px-4 py-4 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
                             <td className="px-3 py-4 text-sm text-gray-700">{jd?.metal || "—"}</td>
                             <td className="px-3 py-4 text-sm text-gray-700">{jd?.brand || "—"}</td>
                             <td className="px-3 py-4 text-sm text-gray-700">{jd?.mainStone || "—"}</td>
@@ -606,6 +742,11 @@ export default function InventoryPage() {
                             <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">
                               ${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                             </td>
+                            {spotPrices && (
+                              <td className="px-4 py-4 text-right text-sm font-medium text-amber-700">
+                                {melt !== null ? `$${melt.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
+                              </td>
+                            )}
                             <td className="px-4 py-4 text-right text-sm text-gray-500">
                               ${costPerG.toFixed(2)}
                             </td>
@@ -645,7 +786,12 @@ export default function InventoryPage() {
                         <td className="px-4 py-3 text-left text-sm font-bold text-orange-600">
                           ${jewelryItems.reduce((s, i) => s + i.totalCost, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </td>
-                        <td colSpan={10} />
+                        {spotPrices && (
+                          <td className="px-4 py-3 text-left text-sm font-bold text-amber-700">
+                            Melt: ${jewelryItems.reduce((s, i) => s + (meltValue(i) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          </td>
+                        )}
+                        <td colSpan={spotPrices ? 9 : 10} />
                       </tr>
                     </tfoot>
                   </table>
@@ -675,6 +821,7 @@ export default function InventoryPage() {
                             className="w-4 h-4 rounded border-gray-300 text-blue-600" />
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                         <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shape</th>
                         <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ct</th>
                         <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Color</th>
@@ -708,6 +855,7 @@ export default function InventoryPage() {
                                 {item.itemCode ? item.name : (item.subcategory || item.name)}
                               </Link>
                             </td>
+                            <td className="px-4 py-4 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
                             <td className="px-3 py-4 text-sm text-gray-700">
                               {dd?.shape || "—"}
                             </td>

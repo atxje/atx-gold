@@ -65,7 +65,9 @@ export async function POST(request: Request) {
       notes,
       paymentMethod,
       purchaseNumber: providedPurchaseNumber,
+      quantity: rawQuantity,
     } = body
+    const parsedQuantity = parseInt(rawQuantity) || 0
 
     if (!leadId || !description || !metalType || !weight || !pricePaid) {
       return NextResponse.json(
@@ -115,6 +117,7 @@ export async function POST(request: Request) {
             totalWeight: parsedWeight,
             availableWeight: parsedWeight,
             totalCost: parsedPrice,
+            quantity: parsedQuantity,
           },
         })
         inventoryItemId = inventoryItem.id
@@ -126,6 +129,7 @@ export async function POST(request: Request) {
             totalWeight: { increment: parsedWeight },
             availableWeight: { increment: parsedWeight },
             totalCost: { increment: parsedPrice },
+            quantity: { increment: parsedQuantity },
           },
           create: {
             category,
@@ -135,6 +139,7 @@ export async function POST(request: Request) {
             totalWeight: parsedWeight,
             availableWeight: parsedWeight,
             totalCost: parsedPrice,
+            quantity: parsedQuantity,
           },
         })
         inventoryItemId = inventoryItem.id
@@ -167,6 +172,7 @@ export async function POST(request: Request) {
         purity,
         pricePaid: parsedPrice,
         pricePerUnit: pricePerUnit ? parseFloat(pricePerUnit) : null,
+        quantity: parsedQuantity,
         category: category || null,
         subcategory: subcategory || null,
         inventoryItemId,

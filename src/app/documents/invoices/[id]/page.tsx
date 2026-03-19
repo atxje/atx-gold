@@ -11,6 +11,7 @@ import { format } from "date-fns"
 interface InvoiceItem {
   id: string
   description: string
+  quantity: number
   weight: number
   weightUnit: string
   pricePerUnit: number
@@ -263,6 +264,7 @@ export default function InvoicePage() {
           <thead>
             <tr className="border-b-2 border-gray-300">
               <th className="text-left py-2 text-sm font-semibold text-gray-700">Description</th>
+              <th className="text-right py-2 text-sm font-semibold text-gray-700">Qty</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Weight</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Price/Unit</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Amount</th>
@@ -287,6 +289,7 @@ export default function InvoicePage() {
                         className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-blue-500" />
                     ) : item.description}
                   </td>
+                  <td className="py-3 text-sm text-gray-600 text-right">{item.quantity > 0 ? item.quantity : "—"}</td>
                   <td className="py-3 text-sm text-gray-600 text-right">{item.weight.toFixed(3)} {unit}</td>
                   <td className="py-3 text-sm text-gray-600 text-right">
                     {editMode && ei ? (
@@ -333,7 +336,7 @@ export default function InvoicePage() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={editMode ? 4 : (!hideCost ? 5 : 3)} className="pt-4 text-right font-bold text-gray-900">Total</td>
+              <td colSpan={editMode ? 5 : (!hideCost ? 6 : 4)} className="pt-4 text-right font-bold text-gray-900">Total</td>
               <td className="pt-4 text-right font-bold text-xl text-green-600">
                 ${(editMode ? editTotal : invoice.totalAmount).toFixed(2)}
               </td>
@@ -342,13 +345,13 @@ export default function InvoicePage() {
             {!hideCost && !editMode && (
               <>
                 <tr className="print:hidden">
-                  <td colSpan={5} className="pt-1 text-right text-sm text-gray-500">Total Cost</td>
+                  <td colSpan={6} className="pt-1 text-right text-sm text-gray-500">Total Cost</td>
                   <td className="pt-1 text-right text-sm text-gray-500">
                     ${invoice.items.reduce((s, i) => s + i.costBasis, 0).toFixed(2)}
                   </td>
                 </tr>
                 <tr className="print:hidden">
-                  <td colSpan={5} className="pt-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
+                  <td colSpan={6} className="pt-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
                   <td className="pt-1 text-right text-sm font-semibold text-gray-700">
                     ${invoice.items.reduce((s, i) => s + i.profit, 0).toFixed(2)}
                   </td>

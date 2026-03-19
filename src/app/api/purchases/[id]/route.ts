@@ -77,11 +77,13 @@ export async function PUT(
 
     const weightDelta = item.weight - existing.weight
     const priceDelta = item.pricePaid - existing.pricePaid
+    const qtyDelta = (item.quantity ?? 0) - (existing.quantity ?? 0)
 
     await prisma.purchase.update({
       where: { id: item.id },
       data: {
         description: item.description,
+        quantity: item.quantity ?? 0,
         weight: item.weight,
         pricePerUnit: item.pricePerUnit ?? null,
         pricePaid: item.pricePaid,
@@ -91,8 +93,8 @@ export async function PUT(
       },
     })
 
-    // Sync inventory if weight or price changed
-    if (existing.inventoryItemId && (weightDelta !== 0 || priceDelta !== 0)) {
+    // Sync inventory if weight, price, or quantity changed
+    if (existing.inventoryItemId && (weightDelta !== 0 || priceDelta !== 0 || qtyDelta !== 0)) {
       await prisma.inventoryItem.update({
         where: { id: existing.inventoryItemId },
         data: {
@@ -102,6 +104,9 @@ export async function PUT(
           }),
           ...(priceDelta !== 0 && {
             totalCost: { increment: priceDelta },
+          }),
+          ...(qtyDelta !== 0 && {
+            quantity: { increment: qtyDelta },
           }),
         },
       })

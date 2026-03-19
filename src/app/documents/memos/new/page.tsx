@@ -5,87 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { arrowNav } from "@/lib/table-nav"
 import { Navbar } from "@/components/navbar"
-
-function InventoryCombobox({ inventory, value, onChange, onTabKey }: {
-  inventory: InventoryItem[]
-  value: string
-  onChange: (id: string) => void
-  onTabKey?: () => void
-}) {
-  const selected = inventory.find(i => i.id === value)
-  const [query, setQuery] = useState(selected?.name || "")
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({})
-
-  useEffect(() => { setQuery(selected?.name || "") }, [value, selected?.name])
-
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handle)
-    return () => document.removeEventListener("mousedown", handle)
-  }, [])
-
-  useEffect(() => {
-    if (open && inputRef.current) {
-      const rect = inputRef.current.getBoundingClientRect()
-      setDropStyle({ position: "fixed", top: rect.bottom + 2, left: rect.left, minWidth: Math.max(rect.width, 260), zIndex: 50 })
-    }
-  }, [open])
-
-  const filtered = query.trim() === "" || query === selected?.name
-    ? inventory
-    : inventory.filter(i => i.name.toLowerCase().includes(query.toLowerCase()))
-
-  function subtitle(item: InventoryItem) {
-    if (item.diamondDetails) {
-      const d = item.diamondDetails
-      const parts = [d.shape, d.caratWeight ? `${d.caratWeight}ct` : "", d.color, d.clarity, item.itemCode].filter(Boolean)
-      return parts.length > 0 ? parts.join(" / ") : null
-    }
-    if (item.jewelryDetails) {
-      const j = item.jewelryDetails
-      const parts = [j.metal, j.brand, item.itemCode].filter(Boolean)
-      return parts.length > 0 ? parts.join(" / ") : null
-    }
-    return null
-  }
-
-  return (
-    <div ref={ref} className="relative min-w-[200px]">
-      <input ref={inputRef} value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange("") }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && onTabKey) { e.preventDefault(); onTabKey() } }}
-        placeholder="Type to search…"
-        className="w-full px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50 rounded"
-      />
-      {open && filtered.length > 0 && (
-        <div style={dropStyle} className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
-          {filtered.map(item => {
-            const sub = subtitle(item)
-            return (
-              <div key={item.id} onMouseDown={() => { setQuery(item.name); setOpen(false); onChange(item.id) }}
-                className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${item.id === value ? "bg-blue-50 font-medium" : ""}`}>
-                <div className="font-medium text-gray-900">{item.name}</div>
-                {sub && <div className="text-xs text-gray-500">{sub}</div>}
-                <div className="text-xs text-gray-400">{item.availableWeight.toFixed(3)} {unitLabels[item.weightUnit]} available</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {open && filtered.length === 0 && query && (
-        <div style={dropStyle} className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400">
-          No items found
-        </div>
-      )}
-    </div>
-  )
-}
+import { InventoryPickerModal } from "@/components/inventory-picker"
 
 interface InventoryItem {
   id: string
@@ -94,6 +14,7 @@ interface InventoryItem {
   availableWeight: number
   totalCost: number
   totalWeight: number
+  quantity: number
   itemCode?: string | null
   category?: string
   diamondDetails?: { shape?: string; caratWeight?: number; color?: string; clarity?: string; lab?: string; certNumber?: string } | null
@@ -114,6 +35,7 @@ interface LineItem {
   section?: "regular" | "diamond" | "jewelry"
   inventoryItemId: string
   description: string
+  quantity: string
   weight: string
   pricePerUnit: string
   totalValue: string
@@ -126,6 +48,7 @@ interface ColDef { key: string; label: string; removable: boolean; defaultVisibl
 const ALL_COLUMNS: ColDef[] = [
   { key: "item",        label: "Item",        removable: false, defaultVisible: true },
   { key: "description", label: "Description", removable: true,  defaultVisible: true },
+  { key: "quantity",    label: "Qty",         removable: true,  defaultVisible: true },
   { key: "weight",      label: "Weight",      removable: false, defaultVisible: true },
   { key: "pricePerUnit",label: "Price/Unit",  removable: true,  defaultVisible: true },
   { key: "totalValue",  label: "Memo Value",  removable: false, defaultVisible: true },
@@ -137,7 +60,7 @@ const STORAGE_KEY = "memo-columns"
 const unitLabels: Record<string, string> = { GRAM: "g", TROY_OZ: "oz", CARAT: "ct" }
 
 function newItem(id: number): LineItem {
-  return { id, inventoryItemId: "", description: "", weight: "", pricePerUnit: "", totalValue: "", lastEdited: "totalValue" }
+  return { id, inventoryItemId: "", description: "", quantity: "", weight: "", pricePerUnit: "", totalValue: "", lastEdited: "totalValue" }
 }
 
 function loadVisibleCols(): Record<string, boolean> {
@@ -180,6 +103,7 @@ export default function NewMemoPage() {
   const [focusSection, setFocusSection] = useState<"regular" | "diamond" | "jewelry" | null>(null)
   const diamondBodyRef = useRef<HTMLTableSectionElement>(null)
   const jewelryBodyRef = useRef<HTMLTableSectionElement>(null)
+  const [pickerOpen, setPickerOpen] = useState<"regular" | "diamond" | "jewelry" | null>(null)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -210,7 +134,7 @@ export default function NewMemoPage() {
           setReturnDate(new Date(memo.returnDate).toISOString().split("T")[0])
           setNotes(memo.notes || "")
           setMemoNumber(memo.memoNumber)
-          const rows: LineItem[] = memo.items.map((item: { id: string; inventoryItemId: string; description: string; weight: number; pricePerUnit: number; totalValue: number; inventoryItem?: { totalCost: number; totalWeight: number } }, i: number) => {
+          const rows: LineItem[] = memo.items.map((item: { id: string; inventoryItemId: string; description: string; quantity?: number; weight: number; pricePerUnit: number; totalValue: number; inventoryItem?: { totalCost: number; totalWeight: number } }, i: number) => {
             const invFromMemo = item.inventoryItem
             const invFromList = inv.find(x => x.id === item.inventoryItemId)
             const cpu = invFromMemo && invFromMemo.totalWeight > 0
@@ -226,6 +150,7 @@ export default function NewMemoPage() {
               section,
               inventoryItemId: item.inventoryItemId,
               description: item.description,
+              quantity: (item.quantity ?? 0).toString(),
               weight: item.weight.toString(),
               pricePerUnit: item.pricePerUnit.toString(),
               totalValue: item.totalValue.toString(),
@@ -241,7 +166,7 @@ export default function NewMemoPage() {
           const rows = preselectedIds.map((id, i) => {
             const item = (inv as InventoryItem[]).find((x: InventoryItem) => x.id === id)
             if (!item) return newItem(i + 1)
-            return { id: i + 1, inventoryItemId: id, description: item.name, weight: item.availableWeight.toString(), pricePerUnit: "", totalValue: "", lastEdited: "totalValue" as const }
+            return { id: i + 1, inventoryItemId: id, description: item.name, quantity: item.quantity > 0 ? item.quantity.toString() : "", weight: item.availableWeight.toString(), pricePerUnit: "", totalValue: "", lastEdited: "totalValue" as const }
           })
           setLineItems(rows)
           setNextId(rows.length + 1)
@@ -320,6 +245,31 @@ export default function NewMemoPage() {
     setFocusSection(section)
   }
 
+  function addFromInventory(ids: string[], section: "regular" | "diamond" | "jewelry") {
+    const newItems: LineItem[] = []
+    let id = nextId
+    for (const invId of ids) {
+      if (lineItems.some(li => li.inventoryItemId === invId)) continue
+      const inv = inventory.find(i => i.id === invId)
+      if (!inv) continue
+      newItems.push({
+        ...newItem(id++),
+        section,
+        inventoryItemId: invId,
+        description: inv.name,
+        quantity: inv.quantity > 0 ? inv.quantity.toString() : "",
+        weight: inv.availableWeight.toString(),
+      })
+    }
+    if (newItems.length > 0) {
+      setLineItems(prev => {
+        const hasOnlyEmpty = prev.length === 1 && !prev[0].inventoryItemId && !prev[0].weight && !prev[0].totalValue
+        return hasOnlyEmpty ? newItems : [...prev, ...newItems]
+      })
+      setNextId(id)
+    }
+  }
+
   function removeItem(id: number) {
     if (lineItems.length > 1 || editId) setLineItems(lineItems.filter(i => i.id !== id))
   }
@@ -331,6 +281,7 @@ export default function NewMemoPage() {
       if (field === "inventoryItemId") {
         const inv = inventory.find(i => i.id === value)
         updated.description = inv?.name || ""
+        updated.quantity = inv ? (inv.quantity > 0 ? inv.quantity.toString() : "") : ""
         updated.weight = inv ? inv.availableWeight.toString() : ""
         updated.pricePerUnit = ""
         updated.totalValue = ""
@@ -390,6 +341,7 @@ export default function NewMemoPage() {
             items: lineItems.filter(i => i.dbId).map(item => ({
               id: item.dbId,
               description: item.description,
+              quantity: parseInt(item.quantity) || 0,
               weight: parseFloat(item.weight),
               pricePerUnit: parseFloat(item.pricePerUnit) || 0,
               totalValue: parseFloat(item.totalValue),
@@ -399,6 +351,7 @@ export default function NewMemoPage() {
               return {
                 inventoryItemId: item.inventoryItemId,
                 description: item.description,
+                quantity: parseInt(item.quantity) || 0,
                 weight: parseFloat(item.weight),
                 weightUnit: inv?.weightUnit || "GRAM",
                 pricePerUnit: parseFloat(item.pricePerUnit) || 0,
@@ -423,6 +376,7 @@ export default function NewMemoPage() {
               return {
                 inventoryItemId: item.inventoryItemId,
                 description: item.description,
+                quantity: parseInt(item.quantity) || 0,
                 weight: parseFloat(item.weight),
                 weightUnit: inv?.weightUnit || "GRAM",
                 pricePerUnit: parseFloat(item.pricePerUnit) || 0,
@@ -476,7 +430,8 @@ export default function NewMemoPage() {
       const inv = inventory.find(i => i.id === item.inventoryItemId)
       const unit = inv ? unitLabels[inv.weightUnit] || "g" : "g"
       const isLastRow = item.id === sectionItems[sectionItems.length - 1]?.id
-      const lastColKey = visibleDefs[visibleDefs.length - 1].key
+      const editableKeys = ["item", "description", "quantity", "weight", "pricePerUnit", "totalValue"]
+      const lastColKey = [...visibleDefs].reverse().find(c => editableKeys.includes(c.key))?.key || visibleDefs[visibleDefs.length - 1].key
       function tabProps(colKey: string) {
         return {
           onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -490,27 +445,21 @@ export default function NewMemoPage() {
           {visibleDefs.map(col => (
             <td key={col.key} className={`${cellClass} align-middle`}>
               {col.key === "item" && (
-                <InventoryCombobox
-                  inventory={
-                    inv?.diamondDetails ? diamondInventory
-                    : inv?.jewelryDetails ? jewelryInventory
-                    : !item.inventoryItemId ? (
-                      // For unassigned items, show section-appropriate inventory
-                      tbodyRef === diamondBodyRef ? diamondInventory
-                      : tbodyRef === jewelryBodyRef ? jewelryInventory
-                      : regularInventory
-                    )
-                    : regularInventory
-                  }
-                  value={item.inventoryItemId}
-                  onChange={id => updateItem(item.id, "inventoryItemId", id)}
-                  onTabKey={isLastRow && lastColKey === "item" ? sectionAddFn : undefined}
-                />
+                <div className="min-w-[160px] px-2 py-1.5 text-sm text-gray-700 truncate">
+                  {inv ? inv.name : <span className="text-gray-300 italic">—</span>}
+                </div>
               )}
               {col.key === "description" && (
                 <input value={item.description} placeholder="Description"
                   onChange={e => updateItem(item.id, "description", e.target.value)}
                   className={inputClass + " min-w-[140px]"} {...tabProps("description")} />
+              )}
+              {col.key === "quantity" && (
+                <div className="min-w-[50px]">
+                  <input type="number" step="1" min="0" placeholder="0" value={item.quantity}
+                    onChange={e => updateItem(item.id, "quantity", e.target.value)}
+                    className={numInputClass} {...tabProps("quantity")} />
+                </div>
               )}
               {col.key === "weight" && (
                 <div className="flex items-center gap-1 min-w-[100px]">
@@ -674,9 +623,9 @@ export default function NewMemoPage() {
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={() => addSectionItem("regular")}
+                <button type="button" onClick={() => setPickerOpen("regular")}
                   className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
-                  + Add Row
+                  + Add from Inventory
                 </button>
               </div>
             </div>
@@ -705,9 +654,9 @@ export default function NewMemoPage() {
             <div className="bg-white rounded-lg shadow">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
                 <span className="text-sm font-semibold text-gray-700">Single Diamonds</span>
-                <button type="button" onClick={() => addSectionItem("diamond")}
+                <button type="button" onClick={() => setPickerOpen("diamond")}
                   className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
-                  + Add Row
+                  + Add from Inventory
                 </button>
               </div>
               <div className="overflow-x-auto">
@@ -735,9 +684,9 @@ export default function NewMemoPage() {
             <div className="bg-white rounded-lg shadow">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
                 <span className="text-sm font-semibold text-gray-700">Jewelry</span>
-                <button type="button" onClick={() => addSectionItem("jewelry")}
+                <button type="button" onClick={() => setPickerOpen("jewelry")}
                   className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
-                  + Add Row
+                  + Add from Inventory
                 </button>
               </div>
               <div className="overflow-x-auto">
@@ -822,6 +771,24 @@ export default function NewMemoPage() {
             </button>
           </div>
         </form>
+
+        {pickerOpen && (
+          <InventoryPickerModal
+            inventory={
+              pickerOpen === "diamond" ? diamondInventory
+              : pickerOpen === "jewelry" ? jewelryInventory
+              : regularInventory
+            }
+            exclude={lineItems.filter(i => i.inventoryItemId).map(i => i.inventoryItemId)}
+            onAdd={ids => addFromInventory(ids, pickerOpen)}
+            onClose={() => setPickerOpen(null)}
+            title={
+              pickerOpen === "diamond" ? "Select Diamonds"
+              : pickerOpen === "jewelry" ? "Select Jewelry"
+              : "Select Inventory Items"
+            }
+          />
+        )}
       </main>
     </div>
   )

@@ -52,6 +52,7 @@ export async function PATCH(
           totalProfit: { decrement: item.profit },
           totalCost: { increment: item.costBasis },
           ...(!item.memoItemId && { availableWeight: { increment: item.weight } }),
+          ...(item.quantity > 0 && { quantity: { increment: item.quantity } }),
         },
       })
 
@@ -105,6 +106,7 @@ export async function PATCH(
         where: { id: item.id },
         data: {
           description: item.description,
+          quantity: item.quantity ?? existing.quantity,
           pricePerUnit: item.pricePerUnit,
           totalPrice: item.totalPrice,
           weight: newWeight,
@@ -155,6 +157,7 @@ export async function PATCH(
           invoiceId: id,
           inventoryItemId: item.inventoryItemId,
           description: item.description,
+          quantity: item.quantity ?? 0,
           weight: item.weight,
           weightUnit: item.weightUnit || invItem.weightUnit,
           pricePerUnit: item.pricePerUnit,
@@ -172,6 +175,7 @@ export async function PATCH(
           soldValue: { increment: item.totalPrice },
           totalProfit: { increment: profit },
           totalCost: { decrement: costBasis },
+          ...((item.quantity ?? 0) > 0 && { quantity: { decrement: item.quantity } }),
         },
       })
     }
@@ -219,6 +223,7 @@ export async function DELETE(
         totalProfit: { decrement: item.profit },
         totalCost: { increment: item.costBasis },
         ...(!item.memoItemId && { availableWeight: { increment: item.weight } }),
+        ...(item.quantity > 0 && { quantity: { increment: item.quantity } }),
       },
     })
 

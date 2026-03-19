@@ -179,6 +179,7 @@ model InventoryItem {
   soldValue        Float           @default(0)
   totalProfit      Float           @default(0)
   askingPrice      Float           @default(0)
+  quantity         Int             @default(0)
   status           InventoryStatus @default(ON_STOCK)
 
   purchases        Purchase[]
@@ -288,6 +289,7 @@ model InvoiceItem {
   totalPrice      Float
   costBasis       Float         @default(0)
   profit          Float         @default(0)
+  quantity        Int           @default(0)
   memoItemId      String?       @unique
 
   invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
@@ -324,6 +326,7 @@ model MemoItem {
   weightUnit      WeightUnit
   pricePerUnit    Float
   totalValue      Float
+  quantity        Int        @default(0)
   status          MemoStatus @default(ACTIVE)
 
   memo          Memo          @relation(fields: [memoId], references: [id], onDelete: Cascade)
@@ -342,6 +345,7 @@ model Purchase {
   purity          String?
   pricePaid       Float
   pricePerUnit    Float?
+  quantity        Int            @default(0)
   category        String?
   subcategory     String?
   inventoryItemId String?

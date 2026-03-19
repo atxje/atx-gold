@@ -74,6 +74,7 @@ export async function POST(request: Request) {
           soldValue: { increment: item.totalPrice },
           totalProfit: { increment: profit },
           totalCost: { decrement: costBasis },
+          ...(item.quantity > 0 && { quantity: { decrement: item.quantity } }),
         },
       })
     }
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
           create: itemsWithCost.map((item: {
             inventoryItemId: string
             description: string
+            quantity?: number
             weight: number
             weightUnit: string
             pricePerUnit: number
@@ -103,6 +105,7 @@ export async function POST(request: Request) {
           }) => ({
             inventoryItemId: item.inventoryItemId,
             description: item.description,
+            quantity: item.quantity ?? 0,
             weight: item.weight,
             weightUnit: item.weightUnit as WeightUnit,
             pricePerUnit: item.pricePerUnit,

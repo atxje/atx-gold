@@ -10,12 +10,10 @@ export async function GET(request: Request) {
   const from = searchParams.get("from")
   const to = searchParams.get("to")
 
-  // Local dates (e.g. "2026-03-10" CST) get stored as next-day UTC midnight (2026-03-11T00:00:00Z)
-  // Shift from/to forward by 1 day to match DB storage
+  // Dates are stored as UTC midnight (e.g. "2026-03-16" → 2026-03-16T00:00:00.000Z)
   const fromDate = from ? new Date(from + "T00:00:00.000Z") : null
   const toDate = to ? new Date(to + "T00:00:00.000Z") : null
-  if (fromDate) fromDate.setUTCDate(fromDate.getUTCDate() + 1)
-  if (toDate) toDate.setUTCDate(toDate.getUTCDate() + 2) // +2 because we need end of that shifted day
+  if (toDate) toDate.setUTCDate(toDate.getUTCDate() + 1) // +1 to include the whole "to" day
   const dateFilter = {
     ...(fromDate && { gte: fromDate }),
     ...(toDate && { lt: toDate }),

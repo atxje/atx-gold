@@ -12,6 +12,7 @@ import { format } from "date-fns"
 interface PurchaseItem {
   id: string
   description: string
+  quantity: number
   weight: number
   weightUnit: string
   pricePaid: number
@@ -32,6 +33,7 @@ interface Purchase {
 interface EditItem {
   id: string
   description: string
+  quantity: string
   weight: string
   pricePerUnit: string
   pricePaid: string
@@ -88,6 +90,7 @@ export default function PurchaseDetailPage() {
     setEditItems(purchase.items.map(i => ({
       id: i.id,
       description: i.description,
+      quantity: (i.quantity ?? 0).toString(),
       weight: i.weight.toString(),
       pricePerUnit: (i.pricePerUnit ?? (i.weight > 0 ? i.pricePaid / i.weight : 0)).toFixed(4),
       pricePaid: i.pricePaid.toString(),
@@ -97,7 +100,7 @@ export default function PurchaseDetailPage() {
     setEditMode(true)
   }
 
-  function updateEditItem(itemId: string, field: "description" | "weight" | "pricePerUnit" | "pricePaid", value: string) {
+  function updateEditItem(itemId: string, field: "description" | "quantity" | "weight" | "pricePerUnit" | "pricePaid", value: string) {
     setEditItems(prev => prev.map(item => {
       if (item.id !== itemId) return item
       const updated = { ...item, [field]: value }
@@ -151,6 +154,7 @@ export default function PurchaseDetailPage() {
           items: editItems.map(i => ({
             id: i.id,
             description: i.description,
+            quantity: parseInt(i.quantity) || 0,
             weight: parseFloat(i.weight) || 0,
             pricePerUnit: parseFloat(i.pricePerUnit) || null,
             pricePaid: parseFloat(i.pricePaid) || 0,
@@ -252,6 +256,7 @@ export default function PurchaseDetailPage() {
             <tr className="border-b-2 border-gray-300">
               <th className="text-left py-2 text-sm font-semibold text-gray-700">Code</th>
               <th className="text-left py-2 text-sm font-semibold text-gray-700">Description</th>
+              <th className="text-right py-2 text-sm font-semibold text-gray-700">Qty</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Weight</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Price / Unit</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Amount</th>
@@ -270,6 +275,11 @@ export default function PurchaseDetailPage() {
                     <td className="py-2">
                       <input value={item.description} onChange={e => updateEditItem(item.id, "description", e.target.value)}
                         onKeyDown={arrowNav} className={inputCls} />
+                    </td>
+                    <td className="py-2 pl-2">
+                      <input type="number" step="1" min="0" value={item.quantity}
+                        onChange={e => updateEditItem(item.id, "quantity", e.target.value)}
+                        onKeyDown={arrowNav} className={numCls + " w-16"} />
                     </td>
                     <td className="py-2 pl-2">
                       <div className="flex items-center justify-end gap-1">
@@ -308,6 +318,7 @@ export default function PurchaseDetailPage() {
                       {item.inventoryItem?.itemCode || "—"}
                     </td>
                     <td className="py-3 text-sm text-gray-800">{item.description}</td>
+                    <td className="py-3 text-sm text-gray-600 text-right">{item.quantity > 0 ? item.quantity : "—"}</td>
                     <td className="py-3 text-sm text-gray-600 text-right">{item.weight.toFixed(3)} {unit}</td>
                     <td className="py-3 text-sm text-gray-600 text-right">
                       {ppu != null ? `$${ppu.toFixed(4)}/${unit}` : "—"}
@@ -322,7 +333,7 @@ export default function PurchaseDetailPage() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4} className="pt-4 text-right font-bold text-gray-900">Total Paid</td>
+              <td colSpan={5} className="pt-4 text-right font-bold text-gray-900">Total Paid</td>
               <td className="pt-4 text-right font-bold text-xl text-amber-600">
                 ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </td>

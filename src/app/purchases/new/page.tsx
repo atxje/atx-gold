@@ -77,6 +77,7 @@ interface LineItem {
   dbId?: string
   category: string
   subcategory: string
+  quantity: string
   weight: string
   pricePerUnit: string
   pricePaid: string
@@ -105,6 +106,7 @@ const ALL_COLUMNS: ColDef[] = [
   { key: "color",       label: "Color",       removable: true,  defaultVisible: false },
   { key: "clarity",     label: "Clarity",     removable: true,  defaultVisible: false },
   { key: "caratWeight", label: "Carat (ct)",  removable: true,  defaultVisible: false },
+  { key: "quantity",    label: "Qty",         removable: true,  defaultVisible: true },
   { key: "weight",      label: "Weight",      removable: false, defaultVisible: true },
   { key: "pricePerUnit",label: "Price/Unit",  removable: true,  defaultVisible: true },
   { key: "pricePaid",   label: "Total Paid",  removable: false, defaultVisible: true },
@@ -126,7 +128,7 @@ interface CategoryDef {
 }
 
 function newLineItem(id: number): LineItem {
-  return { id, category: "", subcategory: "", weight: "", pricePerUnit: "", pricePaid: "", description: "", color: "", clarity: "", caratWeight: "", lastEdited: "pricePaid" }
+  return { id, category: "", subcategory: "", quantity: "", weight: "", pricePerUnit: "", pricePaid: "", description: "", color: "", clarity: "", caratWeight: "", lastEdited: "pricePaid" }
 }
 
 function loadVisibleCols(): Record<string, boolean> {
@@ -168,6 +170,7 @@ function NewPurchaseForm() {
   const [newLeadSource, setNewLeadSource] = useState("ORGANIC")
   const [newLeadChannel, setNewLeadChannel] = useState("PHONE")
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0])
+  const [ticketTotal, setTicketTotal] = useState("")
   const [notes, setNotes] = useState("")
   const [editPurchaseNumber, setEditPurchaseNumber] = useState("")
   const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
@@ -239,6 +242,7 @@ function NewPurchaseForm() {
               category: catId,
               subcategory: item.subcategory || "",
               description: item.description,
+              quantity: item.quantity ? item.quantity.toString() : "",
               weight: item.weight.toString(),
               pricePerUnit: ppu ? ppu.toString() : "",
               pricePaid: item.pricePaid.toString(),
@@ -293,6 +297,8 @@ function NewPurchaseForm() {
           }
           setNextId(counter)
           setOriginalDbIds(items.map((item: { id: string }) => item.id))
+          const total = items.reduce((s: number, item: { pricePaid: number }) => s + item.pricePaid, 0)
+          if (total > 0) setTicketTotal(total.toString())
         })
       }
     }
@@ -386,6 +392,7 @@ function NewPurchaseForm() {
   const [focusJewelryRow, setFocusJewelryRow] = useState(false)
   const [nextDiamondNum, setNextDiamondNum] = useState<number>(0)
   const [nextJewelryNum, setNextJewelryNum] = useState<number>(0)
+  const [giaLoading, setGiaLoading] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     if (focusDiamondRow && diamondBodyRef.current) {
@@ -536,6 +543,42 @@ function NewPurchaseForm() {
     setJewelryItems(prev => prev.map(item => item.id === id ? { ...item, subcategory: value } : item))
   }
 
+  async function fetchGIA(itemId: number, certNumber: string) {
+    if (!certNumber) return
+    setGiaLoading(prev => ({ ...prev, [itemId]: true }))
+    try {
+      const res = await fetch(`/api/gia?reportNumber=${encodeURIComponent(certNumber)}`)
+      if (!res.ok) {
+        const err = await res.json()
+        setError(err.error || "GIA lookup failed")
+        return
+      }
+      const data = await res.json()
+      setDiamondItems(prev => prev.map(item => {
+        if (item.id !== itemId) return item
+        const dd = { ...(item.diamondData || { ...emptyDiamondData }) }
+        if (data.shape) dd.shape = data.shape
+        if (data.caratWeight) dd.caratWeight = data.caratWeight
+        if (data.color) dd.color = data.color
+        if (data.clarity) dd.clarity = data.clarity
+        if (data.cutGrade) dd.cutGrade = data.cutGrade
+        if (data.polish) dd.polish = data.polish
+        if (data.symmetry) dd.symmetry = data.symmetry
+        if (data.fluorescence) dd.fluorescence = data.fluorescence
+        if (data.measurements) dd.measurements = data.measurements
+        dd.lab = "GIA"
+        dd.certNumber = data.reportNumber || certNumber
+        const updated = { ...item, diamondData: dd }
+        if (dd.caratWeight) updated.weight = dd.caratWeight
+        return updated
+      }))
+    } catch {
+      setError("Failed to fetch GIA report")
+    } finally {
+      setGiaLoading(prev => ({ ...prev, [itemId]: false }))
+    }
+  }
+
   // Auto-fetch Rapaport for diamond items
   useEffect(() => {
     diamondItems.forEach(item => {
@@ -563,6 +606,8 @@ function NewPurchaseForm() {
 
   const allItems = [...lineItems, ...diamondItems, ...jewelryItems]
   const grandTotal = allItems.reduce((s, i) => s + (parseFloat(i.pricePaid) || 0), 0)
+  const ticketNum = parseFloat(ticketTotal) || 0
+  const ticketRemaining = ticketNum - grandTotal
   const paymentTotal = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
   const paymentDiff = grandTotal - paymentTotal
 
@@ -634,6 +679,7 @@ function NewPurchaseForm() {
                 return {
                   id: item.dbId,
                   description: item.description,
+                  quantity: parseInt(item.quantity) || 0,
                   weight: parseFloat(item.weight) || 0,
                   pricePerUnit: parseFloat(item.pricePerUnit) || null,
                   pricePaid: parseFloat(item.pricePaid) || 0,
@@ -828,6 +874,7 @@ function NewPurchaseForm() {
             leadId,
             description: fullDesc,
             metalType: cat?.metalType || "OTHER",
+            quantity: parseInt(item.quantity) || 0,
             weight: item.weight,
             weightUnit: cat?.weightUnit || "GRAM",
             purity: item.subcategory,
@@ -942,6 +989,15 @@ function NewPurchaseForm() {
                   <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Ticket Total</label>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-gray-400 text-sm">$</span>
+                    <input type="number" step="0.01" placeholder="0.00" value={ticketTotal}
+                      onChange={e => setTicketTotal(e.target.value)}
+                      className="block w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-right" />
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -978,6 +1034,15 @@ function NewPurchaseForm() {
                   <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
                   <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Ticket Total</label>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-gray-400 text-sm">$</span>
+                    <input type="number" step="0.01" placeholder="0.00" value={ticketTotal}
+                      onChange={e => setTicketTotal(e.target.value)}
+                      className="block w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-right" />
+                  </div>
                 </div>
               </div>
             )}
@@ -1096,6 +1161,14 @@ function NewPurchaseForm() {
                                 <span className="text-xs text-gray-400">ct</span>
                               </div>
                             )}
+                            {col.key === "quantity" && (
+                              <div className="min-w-[50px]">
+                                <input type="number" step="1" min="0" placeholder="0" value={item.quantity}
+                                  onChange={e => updateLineItem(item.id, "quantity", e.target.value)}
+                                  className={numInputClass}
+                                  {...tabProps("quantity", isLastRow)} />
+                              </div>
+                            )}
                             {col.key === "weight" && (
                               <div className="flex items-center gap-1 min-w-[100px]">
                                 <input type="number" step="0.0001" placeholder="0.000" value={item.weight}
@@ -1191,9 +1264,20 @@ function NewPurchaseForm() {
                             </select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <input value={dd.certNumber} placeholder="Cert #"
-                              onChange={e => updateDiamondItem(item.id, "certNumber", e.target.value)}
-                              className={inputClass + " min-w-[85px]"} />
+                            <div className="flex items-center gap-1 min-w-[130px]">
+                              <input value={dd.certNumber} placeholder="Cert #"
+                                onChange={e => updateDiamondItem(item.id, "certNumber", e.target.value)}
+                                className={inputClass + " flex-1"} />
+                              {dd.certNumber && (
+                                <button type="button"
+                                  onClick={() => fetchGIA(item.id, dd.certNumber)}
+                                  disabled={giaLoading[item.id]}
+                                  className="px-1.5 py-1 text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap"
+                                  title="Fetch from GIA">
+                                  {giaLoading[item.id] ? "…" : "GIA"}
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <select value={dd.color} onChange={e => updateDiamondItem(item.id, "color", e.target.value)}
@@ -1372,12 +1456,23 @@ function NewPurchaseForm() {
             </div>
           )}
 
-          {/* Grand Total */}
-          <div className="bg-white rounded-lg shadow px-4 py-3 flex justify-end items-center gap-3">
-            <span className="text-sm font-semibold text-gray-600">Total Paid</span>
-            <span className="text-lg font-bold text-amber-600">
-              ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </span>
+          {/* Grand Total + Ticket Remaining */}
+          <div className="bg-white rounded-lg shadow px-4 py-3 flex justify-between items-center">
+            {ticketNum > 0 ? (
+              <span className={`text-sm font-medium ${Math.abs(ticketRemaining) < 0.01 ? "text-green-600" : ticketRemaining > 0 ? "text-amber-600" : "text-red-600"}`}>
+                {Math.abs(ticketRemaining) < 0.01
+                  ? "Items match ticket total"
+                  : ticketRemaining > 0
+                    ? `$${ticketRemaining.toLocaleString("en-US", { minimumFractionDigits: 2 })} remaining`
+                    : `$${Math.abs(ticketRemaining).toLocaleString("en-US", { minimumFractionDigits: 2 })} over ticket total`}
+              </span>
+            ) : <span />}
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-gray-600">Total Paid</span>
+              <span className={`text-lg font-bold ${ticketNum > 0 && Math.abs(ticketRemaining) < 0.01 ? "text-green-600" : "text-amber-600"}`}>
+                ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
 
           {/* Payment Method */}

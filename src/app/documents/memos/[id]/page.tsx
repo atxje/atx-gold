@@ -11,6 +11,7 @@ import { format } from "date-fns"
 interface MemoItem {
   id: string
   description: string
+  quantity: number
   weight: number
   weightUnit: string
   pricePerUnit: number
@@ -326,6 +327,7 @@ export default function MemoPage() {
             <tr className="border-b-2 border-gray-300">
               <th className="print:hidden w-8 py-2" />
               <th className="text-left py-2 text-sm font-semibold text-gray-700">Description</th>
+              <th className="text-right py-2 text-sm font-semibold text-gray-700">Qty</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Weight</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Price/Unit</th>
               <th className="text-right py-2 text-sm font-semibold text-gray-700">Memo Value</th>
@@ -374,6 +376,7 @@ export default function MemoPage() {
                       </>
                     )}
                   </td>
+                  <td className="py-3 text-sm text-gray-600 text-right">{item.quantity > 0 ? item.quantity : "—"}</td>
                   <td className="py-3 text-sm text-gray-600 text-right">{item.weight.toFixed(3)} {unit}</td>
                   <td className="py-3 text-sm text-gray-600 text-right">
                     {editMode && ei ? (
@@ -414,7 +417,7 @@ export default function MemoPage() {
           <tfoot>
             <tr>
               <td className="print:hidden" />
-              <td colSpan={!hideCost && !editMode ? 5 : 3} className="pt-4 text-right font-bold text-gray-900">Total Memo Value</td>
+              <td colSpan={!hideCost && !editMode ? 6 : 4} className="pt-4 text-right font-bold text-gray-900">Total Memo Value</td>
               <td className="pt-4 text-right font-bold text-xl text-blue-600">${memo.totalValue.toFixed(2)}</td>
             </tr>
             {!hideCost && !editMode && (() => {
@@ -427,12 +430,12 @@ export default function MemoPage() {
                 <>
                   <tr className="print:hidden">
                     <td className="print:hidden" />
-                    <td colSpan={5} className="pt-1 text-right text-sm text-gray-500">Total Cost</td>
+                    <td colSpan={6} className="pt-1 text-right text-sm text-gray-500">Total Cost</td>
                     <td className="pt-1 text-right text-sm text-gray-500">${totalCost.toFixed(2)}</td>
                   </tr>
                   <tr className="print:hidden">
                     <td className="print:hidden" />
-                    <td colSpan={5} className="pt-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
+                    <td colSpan={6} className="pt-1 text-right text-sm font-semibold text-gray-700">Total Profit</td>
                     <td className="pt-1 text-right text-sm font-semibold text-gray-700">${totalProfit.toFixed(2)}</td>
                   </tr>
                 </>

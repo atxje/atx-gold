@@ -253,6 +253,11 @@ model MixTransferItem {
   inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
 }
 
+enum InvoiceType {
+  SALE
+  TRANSFER
+}
+
 enum MemoStatus {
   ACTIVE
   RETURNED
@@ -262,6 +267,7 @@ enum MemoStatus {
 model Invoice {
   id            String        @id @default(cuid())
   invoiceNumber String        @unique
+  invoiceType   InvoiceType   @default(SALE)
   customerId    String?
   buyerName     String
   buyerEmail    String?

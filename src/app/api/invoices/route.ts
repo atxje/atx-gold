@@ -3,11 +3,15 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { WeightUnit } from "@/generated/prisma/client"
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  const { searchParams } = new URL(request.url)
+  const invoiceType = searchParams.get("type")
+
   const invoices = await prisma.invoice.findMany({
+    where: invoiceType ? { invoiceType: invoiceType as "SALE" | "TRANSFER" } : undefined,
     include: { items: { include: { inventoryItem: { select: { name: true } } } } },
     orderBy: { date: "desc" },
   })
@@ -21,18 +25,23 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { customerId, buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes, items, memoItemIds } = body
+    const { customerId, buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes, items, memoItemIds, invoiceType: rawType } = body
+    const invoiceType = rawType === "TRANSFER" ? "TRANSFER" : "SALE"
 
     if (!buyerName || !items?.length) {
       return NextResponse.json({ error: "Buyer name and items are required" }, { status: 400 })
     }
 
-    // Auto-generate invoice number
-    const last = await prisma.invoice.findFirst({ orderBy: { invoiceNumber: "desc" } })
+    // Auto-generate invoice number with prefix based on type
+    const prefix = invoiceType === "TRANSFER" ? "TRN-" : "INV-"
+    const last = await prisma.invoice.findFirst({
+      where: { invoiceNumber: { startsWith: prefix } },
+      orderBy: { invoiceNumber: "desc" },
+    })
     const nextNum = last
-      ? parseInt(last.invoiceNumber.replace("INV-", "")) + 1
+      ? parseInt(last.invoiceNumber.replace(prefix, "")) + 1
       : 1
-    const invoiceNumber = `INV-${String(nextNum).padStart(4, "0")}`
+    const invoiceNumber = `${prefix}${String(nextNum).padStart(4, "0")}`
 
     const totalAmount = items.reduce((sum: number, i: { totalPrice: number }) => sum + i.totalPrice, 0)
 
@@ -82,6 +91,7 @@ export async function POST(request: Request) {
     const invoice = await prisma.invoice.create({
       data: {
         invoiceNumber,
+        invoiceType,
         customerId: customerId || null,
         buyerName,
         buyerEmail: buyerEmail || null,

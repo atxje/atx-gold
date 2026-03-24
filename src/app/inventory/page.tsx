@@ -374,6 +374,12 @@ export default function InventoryPage() {
                 <Link href="/purchases/new" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
                   + Record Purchase
                 </Link>
+                <Link href="/documents/invoices/new" className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                  + Record Invoice
+                </Link>
+                <Link href="/documents/memos/new" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm">
+                  + Record Memo Out
+                </Link>
               </>
             )}
           </div>

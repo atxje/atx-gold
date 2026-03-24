@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 
-type Tab = "cashflow" | "purchases" | "sales" | "valuation"
+type Tab = "cashflow" | "purchases" | "sales" | "transfers" | "valuation"
 
 interface Purchase {
   id: string
@@ -52,6 +52,7 @@ interface InvoiceItem {
 interface Invoice {
   id: string
   invoiceNumber: string
+  invoiceType?: string
   buyerName: string
   date: string
   totalAmount: number
@@ -134,8 +135,13 @@ export default function ReportsPage() {
     { key: "cashflow", label: "Cash Flow" },
     { key: "purchases", label: "Purchases" },
     { key: "sales", label: "Sales" },
+    { key: "transfers", label: "Transfers" },
     { key: "valuation", label: "Stock Valuation" },
   ]
+
+  // Split invoices by type
+  const saleInvoices = invoices.filter(i => i.invoiceType !== "TRANSFER")
+  const transferInvoices = invoices.filter(i => i.invoiceType === "TRANSFER")
 
   // Group purchases by purchaseNumber for document-level counting
   const purchaseDocMap = new Map<string, Purchase[]>()
@@ -153,7 +159,7 @@ export default function ReportsPage() {
     entry.bought += p.pricePaid
     cfMonths.set(m, entry)
   })
-  invoices.forEach(inv => {
+  saleInvoices.forEach(inv => {
     const m = groupByMonth(inv.date)
     const entry = cfMonths.get(m) || { bought: 0, sold: 0 }
     entry.sold += inv.totalAmount
@@ -161,7 +167,7 @@ export default function ReportsPage() {
   })
   const cfSorted = Array.from(cfMonths.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   const cfTotalBought = purchases.reduce((s, p) => s + p.pricePaid, 0)
-  const cfTotalSold = invoices.reduce((s, i) => s + i.totalAmount, 0)
+  const cfTotalSold = saleInvoices.reduce((s, i) => s + i.totalAmount, 0)
 
   // === PURCHASES by category ===
   const purchByCat = new Map<string, { count: number; weight: number; cost: number; unit: string }>()
@@ -204,9 +210,9 @@ export default function ReportsPage() {
     .filter(([k]) => k !== "Cash")
     .reduce((s, [, v]) => s + v, 0)
 
-  // === SALES by category ===
+  // === SALES by category (excludes transfers) ===
   const salesByCat = new Map<string, { count: number; weight: number; revenue: number; cost: number; profit: number; unit: string }>()
-  invoices.forEach(inv => {
+  saleInvoices.forEach(inv => {
     inv.items.forEach(item => {
       const cat = `${item.inventoryItem.category} / ${item.inventoryItem.subcategory}`
       const entry = salesByCat.get(cat) || { count: 0, weight: 0, revenue: 0, cost: 0, profit: 0, unit: item.inventoryItem.weightUnit }
@@ -218,9 +224,27 @@ export default function ReportsPage() {
       salesByCat.set(cat, entry)
     })
   })
-  const totalRevenue = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalCostSold = invoices.reduce((s, i) => s + i.items.reduce((ss, it) => ss + it.costBasis, 0), 0)
+  const totalRevenue = saleInvoices.reduce((s, i) => s + i.totalAmount, 0)
+  const totalCostSold = saleInvoices.reduce((s, i) => s + i.items.reduce((ss, it) => ss + it.costBasis, 0), 0)
   const totalProfit = totalRevenue - totalCostSold
+
+  // === TRANSFERS by category ===
+  const transfersByCat = new Map<string, { count: number; weight: number; revenue: number; cost: number; profit: number; unit: string }>()
+  transferInvoices.forEach(inv => {
+    inv.items.forEach(item => {
+      const cat = `${item.inventoryItem.category} / ${item.inventoryItem.subcategory}`
+      const entry = transfersByCat.get(cat) || { count: 0, weight: 0, revenue: 0, cost: 0, profit: 0, unit: item.inventoryItem.weightUnit }
+      entry.count++
+      entry.weight += item.weight
+      entry.revenue += item.totalPrice
+      entry.cost += item.costBasis
+      entry.profit += item.profit
+      transfersByCat.set(cat, entry)
+    })
+  })
+  const transferTotalRevenue = transferInvoices.reduce((s, i) => s + i.totalAmount, 0)
+  const transferTotalCost = transferInvoices.reduce((s, i) => s + i.items.reduce((ss, it) => ss + it.costBasis, 0), 0)
+  const transferTotalProfit = transferTotalRevenue - transferTotalCost
 
   // === STOCK VALUATION (from valuation API) ===
   const totalStockCost = valuationItems.reduce((s, i) => s + i.totalCost, 0)
@@ -497,7 +521,7 @@ export default function ReportsPage() {
               <div>
                 <div className="grid grid-cols-4 gap-4 mb-6">
                   <div className="bg-white rounded-lg shadow p-4">
-                    <div className="text-2xl font-bold">{invoices.length}</div>
+                    <div className="text-2xl font-bold">{saleInvoices.length}</div>
                     <div className="text-sm text-gray-500">Invoices</div>
                   </div>
                   <div className="bg-blue-50 rounded-lg shadow p-4">
@@ -579,7 +603,7 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {invoices.map(inv => {
+                      {saleInvoices.map(inv => {
                         const cost = inv.items.reduce((s, i) => s + i.costBasis, 0)
                         const profit = inv.totalAmount - cost
                         return (
@@ -595,6 +619,104 @@ export default function ReportsPage() {
                             <td className={`px-4 py-3 text-right text-sm font-medium ${profit >= 0 ? "text-green-600" : "text-red-600"}`}>
                               ${fmt(profit)}
                             </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TRANSFERS */}
+            {tab === "transfers" && (
+              <div>
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <div className="text-2xl font-bold">{transferInvoices.length}</div>
+                    <div className="text-sm text-gray-500">Transfers</div>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg shadow p-4">
+                    <div className="text-2xl font-bold text-purple-600">${fmt(transferTotalRevenue)}</div>
+                    <div className="text-sm text-purple-600">Value</div>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg shadow p-4">
+                    <div className="text-2xl font-bold text-orange-600">${fmt(transferTotalCost)}</div>
+                    <div className="text-sm text-orange-600">Cost Basis</div>
+                  </div>
+                  <div className={`rounded-lg shadow p-4 ${transferTotalProfit >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                    <div className={`text-2xl font-bold ${transferTotalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      ${fmt(transferTotalProfit)}
+                    </div>
+                    <div className={`text-sm ${transferTotalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      Difference
+                    </div>
+                  </div>
+                </div>
+
+                {/* By Category */}
+                <h3 className="text-lg font-semibold mb-3">By Category</h3>
+                {transfersByCat.size === 0 ? (
+                  <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No transfers in this period</div>
+                ) : (
+                  <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Items</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Value</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {Array.from(transfersByCat.entries())
+                          .sort((a, b) => b[1].revenue - a[1].revenue)
+                          .map(([cat, data]) => {
+                            const unit = unitLabels[data.unit] || "g"
+                            return (
+                              <tr key={cat} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-medium">{cat}</td>
+                                <td className="px-4 py-3 text-right text-sm">{data.count}</td>
+                                <td className="px-4 py-3 text-right text-sm">{data.weight.toFixed(3)}{unit}</td>
+                                <td className="px-4 py-3 text-right text-sm text-purple-600 font-medium">${fmt(data.revenue)}</td>
+                                <td className="px-4 py-3 text-right text-sm text-orange-600">${fmt(data.cost)}</td>
+                              </tr>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* All Transfers */}
+                <h3 className="text-lg font-semibold mb-3">All Transfers</h3>
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transfer#</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recipient</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Items</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Value</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {transferInvoices.map(inv => {
+                        const cost = inv.items.reduce((s, i) => s + i.costBasis, 0)
+                        return (
+                          <tr key={inv.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm">{new Date(inv.date).toLocaleDateString()}</td>
+                            <td className="px-4 py-3 text-sm text-purple-600">
+                              <a href={`/documents/invoices/${inv.id}`}>{inv.invoiceNumber}</a>
+                            </td>
+                            <td className="px-4 py-3 text-sm">{inv.buyerName}</td>
+                            <td className="px-4 py-3 text-right text-sm">{inv.items.length}</td>
+                            <td className="px-4 py-3 text-right text-sm text-purple-600 font-medium">${fmt(inv.totalAmount)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-orange-600">${fmt(cost)}</td>
                           </tr>
                         )
                       })}

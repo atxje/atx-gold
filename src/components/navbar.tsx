@@ -8,6 +8,7 @@ import { signOut, useSession } from "next-auth/react"
 interface NavItem {
   name: string
   href: string
+  children?: { name: string; href: string }[]
 }
 
 interface NavGroup {
@@ -37,7 +38,12 @@ const navigation: NavEntry[] = [
     items: [
       { name: "Inventory", href: "/inventory" },
       { name: "Purchases", href: "/purchases" },
-      { name: "Documents", href: "/documents" },
+      { name: "Invoices", href: "/documents/invoices/new" },
+      { name: "Memos", href: "/documents/memos/new" },
+      { name: "Stock Documents", href: "/documents", children: [
+        { name: "Transfer", href: "/documents/invoices/new?type=transfer" },
+        { name: "Insert Stock", href: "/inventory/import" },
+      ]},
       { name: "Categories", href: "/categories" },
     ],
   },
@@ -74,20 +80,35 @@ function DropdownMenu({ group, pathname }: { group: NavGroup; pathname: string }
         </svg>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
+        <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
           {group.items.map(item => (
-            <Link
-              key={item.name}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className={`block px-4 py-2 text-sm ${
-                pathname === item.href || pathname.startsWith(item.href + "/")
-                  ? "bg-blue-50 text-blue-700 font-medium"
-                  : "text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              {item.name}
-            </Link>
+            <div key={item.name}>
+              <Link
+                href={item.href}
+                onClick={() => setOpen(false)}
+                className={`block px-4 py-2 text-sm ${
+                  pathname === item.href || pathname.startsWith(item.href + "/")
+                    ? "bg-blue-50 text-blue-700 font-medium"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {item.name}
+              </Link>
+              {item.children?.map(child => (
+                <Link
+                  key={child.name}
+                  href={child.href}
+                  onClick={() => setOpen(false)}
+                  className={`block pl-8 pr-4 py-1.5 text-xs ${
+                    pathname === child.href || pathname.startsWith(child.href + "/")
+                      ? "bg-blue-50 text-blue-700 font-medium"
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  }`}
+                >
+                  {child.name}
+                </Link>
+              ))}
+            </div>
           ))}
         </div>
       )}

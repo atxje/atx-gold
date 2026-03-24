@@ -39,7 +39,7 @@ interface Purchase {
   lead: { id: string; name: string }
 }
 
-type Tab = "invoices" | "memos" | "purchases"
+type Tab = "invoices" | "transfers" | "memos" | "purchases"
 
 const memoStatusColors: Record<string, string> = {
   ACTIVE: "bg-blue-100 text-blue-800",
@@ -52,6 +52,7 @@ export default function DocumentsPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>("invoices")
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [transfers, setTransfers] = useState<Invoice[]>([])
   const [memos, setMemos] = useState<Memo[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,13 +65,15 @@ export default function DocumentsPage() {
     if (!session) return
     setLoading(true)
     Promise.all([
-      fetch("/api/invoices").then(r => r.json()),
-      fetch("/api/memos").then(r => r.json()),
-      fetch("/api/purchases").then(r => r.json()),
-    ]).then(([inv, mem, pur]) => {
-      setInvoices(inv)
-      setMemos(mem)
-      setPurchases(pur)
+      fetch("/api/invoices?type=SALE").then(r => r.ok ? r.json() : []),
+      fetch("/api/invoices?type=TRANSFER").then(r => r.ok ? r.json() : []),
+      fetch("/api/memos").then(r => r.ok ? r.json() : []),
+      fetch("/api/purchases").then(r => r.ok ? r.json() : []),
+    ]).then(([inv, trn, mem, pur]) => {
+      setInvoices(Array.isArray(inv) ? inv : [])
+      setTransfers(Array.isArray(trn) ? trn : [])
+      setMemos(Array.isArray(mem) ? mem : [])
+      setPurchases(Array.isArray(pur) ? pur : [])
       setLoading(false)
     })
   }, [session])
@@ -85,7 +88,7 @@ export default function DocumentsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Stock Documents</h1>
           <div className="flex gap-3">
             <Link href="/purchases/new"
               className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700">
@@ -105,7 +108,7 @@ export default function DocumentsPage() {
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="flex gap-6">
-            {(["invoices", "memos", "purchases"] as Tab[]).map(t => (
+            {(["invoices", "transfers", "memos", "purchases"] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -152,6 +155,41 @@ export default function DocumentsPage() {
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.buyerName}</td>
                           <td className="px-6 py-4 text-sm text-gray-500 text-right">{inv.items.length}</td>
                           <td className="px-6 py-4 text-sm font-bold text-green-600 text-right">${inv.totalAmount.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+
+            {/* Transfers Tab */}
+            {tab === "transfers" && (
+              transfers.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  No transfers yet.{" "}
+                  <Link href="/documents/invoices/new?type=transfer" className="text-purple-600 hover:underline">Create your first transfer</Link>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transfer #</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recipient</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Items</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {transfers.map(trn => (
+                        <tr key={trn.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/documents/invoices/${trn.id}`)}>
+                          <td className="px-6 py-4 text-sm font-semibold text-purple-600">{trn.invoiceNumber}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{format(new Date(trn.date), "MMM d, yyyy")}</td>
+                          <td className="px-6 py-4 text-sm font-medium text-gray-900">{trn.buyerName}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500 text-right">{trn.items.length}</td>
+                          <td className="px-6 py-4 text-sm font-bold text-purple-600 text-right">${trn.totalAmount.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>

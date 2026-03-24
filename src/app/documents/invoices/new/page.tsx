@@ -86,6 +86,7 @@ export default function NewInvoicePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get("editId")
+  const isTransfer = searchParams.get("type") === "transfer"
   const memoItemIds = searchParams.get("memoItems")?.split(",").filter(Boolean) || []
   const rawItems = searchParams.get("items")?.split(",").filter(Boolean) || []
   // items may be plain IDs or "id:weight:pricePerUnit:totalPrice" encoded from memo
@@ -400,6 +401,7 @@ export default function NewInvoicePage() {
           body: JSON.stringify({
             customerId: selectedCustomerId || null,
             buyerName, buyerEmail, buyerPhone, buyerAddress, date, notes,
+            invoiceType: isTransfer ? "TRANSFER" : "SALE",
             memoItemIds: memoItemIds.length ? memoItemIds : undefined,
             items: lineItems.map(item => {
               const inv = inventory.find(i => i.id === item.inventoryItemId)
@@ -557,7 +559,7 @@ export default function NewInvoicePage() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
           <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Invoice${invoiceNumber ? ` — ${invoiceNumber}` : ""}` : "New Invoice"}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit ${isTransfer ? "Transfer" : "Invoice"}${invoiceNumber ? ` — ${invoiceNumber}` : ""}` : isTransfer ? "New Transfer" : "New Invoice"}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -805,7 +807,7 @@ export default function NewInvoicePage() {
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "Saving..." : editId ? "Save Changes" : "Create Invoice"}
+              {loading ? "Saving..." : editId ? "Save Changes" : isTransfer ? "Create Transfer" : "Create Invoice"}
             </button>
           </div>
         </form>

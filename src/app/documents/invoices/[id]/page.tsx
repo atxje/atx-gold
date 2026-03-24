@@ -24,6 +24,7 @@ interface InvoiceItem {
 interface Invoice {
   id: string
   invoiceNumber: string
+  invoiceType?: string
   buyerName: string
   buyerEmail: string | null
   buyerPhone: string | null
@@ -179,9 +180,9 @@ export default function InvoicePage() {
               <>
                 <button onClick={cancelInvoice} disabled={cancelling}
                   className="px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
-                  {cancelling ? "Cancelling…" : "Cancel Invoice"}
+                  {cancelling ? "Cancelling…" : invoice.invoiceType === "TRANSFER" ? "Cancel Transfer" : "Cancel Invoice"}
                 </button>
-                <button onClick={() => router.push(`/documents/invoices/new?editId=${id}`)}
+                <button onClick={() => router.push(`/documents/invoices/new?editId=${id}${invoice.invoiceType === "TRANSFER" ? "&type=transfer" : ""}`)}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
                   Edit
                 </button>
@@ -205,7 +206,7 @@ export default function InvoicePage() {
             <p className="text-sm text-gray-500">{BUSINESS.phone}</p>
           </div>
           <div className="text-right">
-            <h2 className="text-3xl font-bold text-gray-800">INVOICE</h2>
+            <h2 className="text-3xl font-bold text-gray-800">{invoice.invoiceType === "TRANSFER" ? "TRANSFER" : "INVOICE"}</h2>
             <p className="text-lg font-semibold text-blue-600 mt-1">{invoice.invoiceNumber}</p>
             {editMode ? (
               <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}

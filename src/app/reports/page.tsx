@@ -28,6 +28,9 @@ interface ValuationItem {
   category: string
   subcategory: string
   weightUnit: string
+  metalType: string
+  jewelryMetal: string | null
+  isWatch: boolean
   totalWeight: number
   availableWeight: number
   totalCost: number
@@ -61,6 +64,71 @@ interface Invoice {
 
 const unitLabels: Record<string, string> = { GRAM: "g", TROY_OZ: "oz", CARAT: "ct" }
 
+// Melt value constants (same as inventory page)
+const GRAMS_PER_TROY_OZ = 31.1035
+const GOLD_SCRAP_PURITY: Record<string, number> = {
+  "10K": 0.395, "14K": 0.565, "18K": 0.73, "21K+": 0.875, "22K": 0.9167, "24K": 0.99, "Mixed W/D": 0.565,
+}
+const GOLD_SCRAP_PAY_RATE = 0.98
+const SILVER_SCRAP_PURITY: Record<string, number> = {
+  "Sterling Jewelry": 0.925, "Silverware": 0.925,
+}
+const SILVER_SCRAP_PAY_RATE = 0.915
+const GOLD_BULLION_PURITY: Record<string, number> = {
+  "Gold American Eagle": 1, "Gold Maple": 1, "Krugerrand": 1,
+  "PAMP Bar": 1, "VALCAMBI Bar": 1, "Credit Suisse Bar": 1, "Centenario": 0.9,
+  "1 gram bar": 1, "2.5 gram bar": 1, "5 gram bar": 1, "10 gram bar": 1, "20 gram bar": 1, "100 gram bar": 1,
+}
+const SILVER_BULLION_PURITY: Record<string, number> = {
+  "Silver Eagle": 1, "Silver Buffalo": 1, "Silver Generics": 0.999, "Silver Dollar (Peace/Morgan)": 1,
+}
+const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver"; purity: number; payRate: number }> = {
+  "10K": { metal: "gold", purity: 0.395, payRate: GOLD_SCRAP_PAY_RATE },
+  "14K": { metal: "gold", purity: 0.565, payRate: GOLD_SCRAP_PAY_RATE },
+  "18K": { metal: "gold", purity: 0.73, payRate: GOLD_SCRAP_PAY_RATE },
+  "Plat": { metal: "gold", purity: 0, payRate: 0 },
+  "Sterling": { metal: "silver", purity: 0.925, payRate: SILVER_SCRAP_PAY_RATE },
+}
+
+function itemMeltValue(item: ValuationItem, spotPrices: { gold: number; silver: number }): number | null {
+  const weight = item.availableWeight
+  if (weight <= 0) return null
+
+  const mt = item.metalType
+  if (mt === "GOLD" || mt === "PLATINUM" || mt === "PALLADIUM") {
+    const scrapPurity = GOLD_SCRAP_PURITY[item.subcategory]
+    if (scrapPurity !== undefined && scrapPurity > 0 && item.weightUnit === "GRAM") {
+      return weight * scrapPurity * GOLD_SCRAP_PAY_RATE * (spotPrices.gold / GRAMS_PER_TROY_OZ)
+    }
+    const bullionPurity = GOLD_BULLION_PURITY[item.subcategory]
+    if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ") {
+      return weight * bullionPurity * spotPrices.gold
+    }
+  }
+
+  if (mt === "SILVER") {
+    const scrapPurity = SILVER_SCRAP_PURITY[item.subcategory]
+    if (scrapPurity !== undefined && item.weightUnit === "GRAM") {
+      return weight * scrapPurity * SILVER_SCRAP_PAY_RATE * (spotPrices.silver / GRAMS_PER_TROY_OZ)
+    }
+    const bullionPurity = SILVER_BULLION_PURITY[item.subcategory]
+    if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ") {
+      return weight * bullionPurity * spotPrices.silver
+    }
+  }
+
+  // Jewelry — melt based on metal type
+  if (mt === "JEWELRY" && item.jewelryMetal) {
+    const jm = JEWELRY_METAL_INFO[item.jewelryMetal]
+    if (jm && jm.purity > 0) {
+      const spot = jm.metal === "gold" ? spotPrices.gold : spotPrices.silver
+      return weight * jm.purity * jm.payRate * (spot / GRAMS_PER_TROY_OZ)
+    }
+  }
+
+  return null
+}
+
 function fmtDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
@@ -93,6 +161,10 @@ export default function ReportsPage() {
   const [valuationDate, setValuationDate] = useState("")
   const [valuationItems, setValuationItems] = useState<ValuationItem[]>([])
   const [valuationLoading, setValuationLoading] = useState(false)
+  const [spotPrices, setSpotPrices] = useState<{ gold: number; silver: number; timestamp: string } | null>(null)
+  const [spotLoading, setSpotLoading] = useState(false)
+  const [editingAsk, setEditingAsk] = useState<string | null>(null) // itemId or itemId:total
+  const [askValue, setAskValue] = useState("")
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -109,6 +181,75 @@ export default function ReportsPage() {
     const res = await fetch(`/api/reports/valuation?${params}`)
     if (res.ok) setValuationItems(await res.json())
     setValuationLoading(false)
+  }
+
+  function meltPerUnit(item: ValuationItem, spot: { gold: number; silver: number }): number | null {
+    const mt = item.metalType
+    if (mt === "GOLD" || mt === "PLATINUM" || mt === "PALLADIUM") {
+      const scrapPurity = GOLD_SCRAP_PURITY[item.subcategory]
+      if (scrapPurity !== undefined && scrapPurity > 0 && item.weightUnit === "GRAM")
+        return scrapPurity * GOLD_SCRAP_PAY_RATE * (spot.gold / GRAMS_PER_TROY_OZ)
+      const bullionPurity = GOLD_BULLION_PURITY[item.subcategory]
+      if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ")
+        return bullionPurity * spot.gold
+    }
+    if (mt === "SILVER") {
+      const scrapPurity = SILVER_SCRAP_PURITY[item.subcategory]
+      if (scrapPurity !== undefined && item.weightUnit === "GRAM")
+        return scrapPurity * SILVER_SCRAP_PAY_RATE * (spot.silver / GRAMS_PER_TROY_OZ)
+      const bullionPurity = SILVER_BULLION_PURITY[item.subcategory]
+      if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ")
+        return bullionPurity * spot.silver
+    }
+    return null
+  }
+
+  async function applyMeltToAsking(spot: { gold: number; silver: number }) {
+    const updates: { id: string; askingPrice: number }[] = []
+    for (const item of valuationItems) {
+      const rate = meltPerUnit(item, spot)
+      if (rate !== null && rate > 0) updates.push({ id: item.id, askingPrice: rate })
+    }
+    // Batch save
+    await Promise.all(updates.map(u =>
+      fetch(`/api/inventory/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ askingPrice: u.askingPrice }),
+      })
+    ))
+    // Update local state
+    setValuationItems(prev => {
+      const map = new Map(updates.map(u => [u.id, u.askingPrice]))
+      return prev.map(i => map.has(i.id) ? { ...i, askingPrice: map.get(i.id)! } : i)
+    })
+  }
+
+  async function fetchSpotPrices() {
+    setSpotLoading(true)
+    try {
+      const res = await fetch("/api/spot-prices")
+      if (res.ok) {
+        const data = await res.json()
+        setSpotPrices(data)
+        await applyMeltToAsking(data)
+      }
+    } catch { /* ignore */ }
+    finally { setSpotLoading(false) }
+  }
+
+  async function saveAskingPrice(item: ValuationItem, mode: "unit" | "total") {
+    const val = parseFloat(askValue)
+    if (isNaN(val) || val < 0) { setEditingAsk(null); return }
+    const currentWeight = item.totalWeight - item.soldWeight
+    const newAskPerUnit = mode === "total" && currentWeight > 0 ? val / currentWeight : val
+    await fetch(`/api/inventory/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ askingPrice: newAskPerUnit }),
+    })
+    setValuationItems(prev => prev.map(i => i.id === item.id ? { ...i, askingPrice: newAskPerUnit } : i))
+    setEditingAsk(null)
   }
 
   async function fetchData(fromOverride?: string, toOverride?: string) {
@@ -252,6 +393,66 @@ export default function ReportsPage() {
     const currentWeight = i.totalWeight - i.soldWeight
     return s + (i.askingPrice > 0 ? i.askingPrice * currentWeight : 0)
   }, 0)
+
+  // === FAIR VALUE BASIS ===
+  const goldItems = valuationItems.filter(i => i.metalType === "GOLD" || i.metalType === "PLATINUM" || i.metalType === "PALLADIUM")
+  const silverItems = valuationItems.filter(i => i.metalType === "SILVER")
+  const jewelryItems = valuationItems.filter(i => i.metalType === "JEWELRY")
+  const diamondItems = valuationItems.filter(i => i.metalType === "DIAMOND")
+  const watchItems = valuationItems.filter(i => i.metalType === "WATCH")
+
+  // Gold fair value = melt value (includes jewelry with gold metal)
+  const goldJewelryWithGold = jewelryItems.filter(i => {
+    const jm = i.jewelryMetal ? JEWELRY_METAL_INFO[i.jewelryMetal] : null
+    return jm?.metal === "gold"
+  })
+  const silverJewelryWithSilver = jewelryItems.filter(i => {
+    const jm = i.jewelryMetal ? JEWELRY_METAL_INFO[i.jewelryMetal] : null
+    return jm?.metal === "silver"
+  })
+  const jewelryNoMelt = jewelryItems.filter(i => {
+    if (!i.jewelryMetal) return true
+    const jm = JEWELRY_METAL_INFO[i.jewelryMetal]
+    return !jm || jm.purity <= 0
+  })
+
+  function groupMeltValue(items: ValuationItem[]): { total: number; count: number; noMeltCount: number } {
+    let total = 0, count = 0, noMeltCount = 0
+    for (const item of items) {
+      if (spotPrices) {
+        const mv = itemMeltValue(item, spotPrices)
+        if (mv !== null) { total += mv; count++ }
+        else noMeltCount++
+      } else {
+        noMeltCount++
+      }
+    }
+    return { total, count, noMeltCount }
+  }
+
+  const goldMelt = groupMeltValue([...goldItems, ...goldJewelryWithGold])
+  const silverMelt = groupMeltValue([...silverItems, ...silverJewelryWithSilver])
+
+  // Diamonds & watches: asking value
+  function groupAskingValue(items: ValuationItem[]): { total: number; count: number; noAskCount: number } {
+    let total = 0, count = 0, noAskCount = 0
+    for (const item of items) {
+      const currentWeight = item.totalWeight - item.soldWeight
+      if (item.askingPrice > 0 && currentWeight > 0) {
+        total += item.askingPrice * currentWeight
+        count++
+      } else {
+        noAskCount++
+      }
+    }
+    return { total, count, noAskCount }
+  }
+
+  const diamondAsking = groupAskingValue(diamondItems)
+  const watchAsking = groupAskingValue(watchItems)
+  const jewelryNoMeltAsking = groupAskingValue(jewelryNoMelt)
+
+  const totalFairValue = goldMelt.total + silverMelt.total + diamondAsking.total + watchAsking.total + jewelryNoMeltAsking.total
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -772,75 +973,254 @@ export default function ReportsPage() {
                       </div>
                     </div>
 
-                    {valuationItems.length === 0 ? (
-                      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items in stock{valuationDate ? " at this date" : ""}</div>
-                    ) : (
-                      <div className="bg-white rounded-lg shadow overflow-hidden">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Office</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">On Memo</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Avg/Unit</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ask/Unit</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Asking Value</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Potential Profit</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {valuationItems.map(item => {
-                              const unit = unitLabels[item.weightUnit] || "g"
-                              const currentWeight = item.totalWeight - item.soldWeight
-                              const avgPerUnit = currentWeight > 0 ? item.totalCost / currentWeight : 0
-                              const onMemo = item.totalWeight - item.availableWeight - item.soldWeight
-                              const askingValue = item.askingPrice > 0 ? item.askingPrice * currentWeight : 0
-                              const potentialProfit = askingValue > 0 ? askingValue - item.totalCost : 0
-                              return (
-                                <tr key={item.id} className="hover:bg-gray-50">
-                                  <td className="px-4 py-3 text-sm font-medium">
-                                    <a href={`/inventory/${item.id}`} className="text-blue-600 hover:text-blue-800">{item.name}</a>
-                                  </td>
-                                  <td className="px-4 py-3 text-sm text-gray-500">{item.category} / {item.subcategory}</td>
-                                  <td className="px-4 py-3 text-right text-sm">{currentWeight.toFixed(3)}{unit}</td>
-                                  <td className="px-4 py-3 text-right text-sm font-medium">{item.availableWeight.toFixed(3)}{unit}</td>
-                                  <td className="px-4 py-3 text-right text-sm text-amber-600">
-                                    {onMemo > 0.0005 ? `${onMemo.toFixed(3)}${unit}` : "—"}
-                                  </td>
-                                  <td className="px-4 py-3 text-right text-sm text-orange-600 font-medium">${fmt(item.totalCost)}</td>
-                                  <td className="px-4 py-3 text-right text-sm text-gray-500">${fmt(avgPerUnit)}/{unit}</td>
-                                  <td className="px-4 py-3 text-right text-sm text-gray-500">
-                                    {item.askingPrice > 0 ? `$${fmt(item.askingPrice)}/${unit}` : "—"}
-                                  </td>
-                                  <td className="px-4 py-3 text-right text-sm text-blue-600 font-medium">
-                                    {askingValue > 0 ? `$${fmt(askingValue)}` : "—"}
-                                  </td>
-                                  <td className={`px-4 py-3 text-right text-sm font-medium ${potentialProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                    {askingValue > 0 ? `$${fmt(potentialProfit)}` : "—"}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                          <tfoot className="bg-gray-50 font-semibold">
-                            <tr>
-                              <td className="px-4 py-3 text-sm" colSpan={5}>Totals</td>
-                              <td className="px-4 py-3 text-right text-sm text-orange-600">${fmt(totalStockCost)}</td>
-                              <td className="px-4 py-3" colSpan={2}></td>
-                              <td className="px-4 py-3 text-right text-sm text-blue-600">
-                                {totalAskingValue > 0 ? `$${fmt(totalAskingValue)}` : "—"}
-                              </td>
-                              <td className={`px-4 py-3 text-right text-sm ${totalAskingValue - totalStockCost >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                {totalAskingValue > 0 ? `$${fmt(totalAskingValue - totalStockCost)}` : "—"}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
+                    {/* Fair Value Basis — only for today's valuation */}
+                    {valuationItems.length > 0 && !valuationDate && (
+                      <div className="bg-white rounded-lg shadow p-5 mb-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900">Fair Value Basis</h3>
+                          {!spotPrices && (
+                            <button onClick={fetchSpotPrices} disabled={spotLoading}
+                              className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 disabled:opacity-50">
+                              {spotLoading ? "Fetching..." : "Fetch Spot Prices"}
+                            </button>
+                          )}
+                          {spotPrices && (
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              <span>Gold: ${fmt(spotPrices.gold)}/oz</span>
+                              <span>Silver: ${fmt(spotPrices.silver)}/oz</span>
+                              <button onClick={fetchSpotPrices} disabled={spotLoading}
+                                className="text-blue-600 hover:underline">
+                                {spotLoading ? "..." : "Refresh"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {!spotPrices ? (
+                          <p className="text-sm text-gray-500">Fetch spot prices to calculate melt values for gold and silver items.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {/* Gold */}
+                              <div className="bg-yellow-50 rounded-lg p-3">
+                                <div className="text-xs font-medium text-yellow-700 uppercase mb-1">Gold Items</div>
+                                <div className="text-xl font-bold text-yellow-700">
+                                  {goldMelt.count > 0 ? `$${fmt(goldMelt.total)}` : "—"}
+                                </div>
+                                <div className="text-xs text-yellow-600">
+                                  {goldMelt.count} item{goldMelt.count !== 1 ? "s" : ""} (melt value)
+                                  {goldMelt.noMeltCount > 0 && (
+                                    <span className="block text-yellow-500">{goldMelt.noMeltCount} not calculable</span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Silver */}
+                              <div className="bg-gray-100 rounded-lg p-3">
+                                <div className="text-xs font-medium text-gray-600 uppercase mb-1">Silver Items</div>
+                                <div className="text-xl font-bold text-gray-700">
+                                  {silverMelt.count > 0 ? `$${fmt(silverMelt.total)}` : "—"}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {silverMelt.count} item{silverMelt.count !== 1 ? "s" : ""} (melt value)
+                                  {silverMelt.noMeltCount > 0 && (
+                                    <span className="block text-gray-400">{silverMelt.noMeltCount} not calculable</span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Diamonds */}
+                              <div className="bg-blue-50 rounded-lg p-3">
+                                <div className="text-xs font-medium text-blue-700 uppercase mb-1">Diamonds</div>
+                                <div className="text-xl font-bold text-blue-700">
+                                  {diamondAsking.count > 0 ? `$${fmt(diamondAsking.total)}` : "—"}
+                                </div>
+                                <div className="text-xs text-blue-600">
+                                  {diamondAsking.count} item{diamondAsking.count !== 1 ? "s" : ""} (asking value)
+                                  {diamondAsking.noAskCount > 0 && (
+                                    <span className="block text-red-500">{diamondAsking.noAskCount} without asking price</span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Watches */}
+                              <div className="bg-purple-50 rounded-lg p-3">
+                                <div className="text-xs font-medium text-purple-700 uppercase mb-1">Watches</div>
+                                <div className="text-xl font-bold text-purple-700">
+                                  {watchAsking.count > 0 ? `$${fmt(watchAsking.total)}` : "—"}
+                                </div>
+                                <div className="text-xs text-purple-600">
+                                  {watchAsking.count} item{watchAsking.count !== 1 ? "s" : ""} (asking value)
+                                  {watchAsking.noAskCount > 0 && (
+                                    <span className="block text-red-500">{watchAsking.noAskCount} without asking price</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {/* Jewelry without melt (no gold/silver metal) */}
+                            {jewelryNoMelt.length > 0 && (
+                              <div className="bg-pink-50 rounded-lg p-3">
+                                <div className="text-xs font-medium text-pink-700 uppercase mb-1">Jewelry (no melt — asking value)</div>
+                                <div className="text-xl font-bold text-pink-700">
+                                  {jewelryNoMeltAsking.count > 0 ? `$${fmt(jewelryNoMeltAsking.total)}` : "—"}
+                                </div>
+                                <div className="text-xs text-pink-600">
+                                  {jewelryNoMeltAsking.count} item{jewelryNoMeltAsking.count !== 1 ? "s" : ""}
+                                  {jewelryNoMeltAsking.noAskCount > 0 && (
+                                    <span> · {jewelryNoMeltAsking.noAskCount} without asking price</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {/* Total */}
+                            <div className="border-t pt-3 flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">Total Fair Value</span>
+                              <span className="text-xl font-bold text-green-700">
+                                {totalFairValue > 0 ? `$${fmt(totalFairValue)}` : "—"}
+                              </span>
+                            </div>
+                            {totalFairValue > 0 && totalStockCost > 0 && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-500">Fair Value vs Cost Basis</span>
+                                <span className={totalFairValue >= totalStockCost ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+                                  {totalFairValue >= totalStockCost ? "+" : ""}{fmt(((totalFairValue - totalStockCost) / totalStockCost) * 100)}%
+                                  ({totalFairValue >= totalStockCost ? "+" : ""}${fmt(totalFairValue - totalStockCost)})
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {valuationItems.length === 0 ? (
+                      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No items in stock{valuationDate ? " at this date" : ""}</div>
+                    ) : (() => {
+                      // Group items by category
+                      const grouped = new Map<string, ValuationItem[]>()
+                      for (const item of valuationItems) {
+                        const key = item.category
+                        if (!grouped.has(key)) grouped.set(key, [])
+                        grouped.get(key)!.push(item)
+                      }
+                      const groups = Array.from(grouped.entries())
+                      return (
+                        <div className="space-y-4">
+                          {groups.map(([category, items]) => {
+                            const groupCost = items.reduce((s, i) => s + i.totalCost, 0)
+                            const groupAskVal = items.reduce((s, i) => {
+                              const cw = i.totalWeight - i.soldWeight
+                              return s + (i.askingPrice > 0 ? i.askingPrice * cw : 0)
+                            }, 0)
+                            const groupProfit = groupAskVal > 0 ? groupAskVal - groupCost : 0
+                            return (
+                              <div key={category} className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                  <thead className="bg-gray-100">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700" colSpan={10}>
+                                        {category} <span className="text-xs font-normal text-gray-500">({items.length} item{items.length !== 1 ? "s" : ""})</span>
+                                      </th>
+                                    </tr>
+                                    <tr>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subcategory</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Office</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">On Memo</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Avg/Unit</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask/Unit</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Asking Value</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Potential Profit</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-200">
+                                    {items.map(item => {
+                                      const unit = unitLabels[item.weightUnit] || "g"
+                                      const currentWeight = item.totalWeight - item.soldWeight
+                                      const avgPerUnit = currentWeight > 0 ? item.totalCost / currentWeight : 0
+                                      const onMemo = item.totalWeight - item.availableWeight - item.soldWeight
+                                      const askingValue = item.askingPrice > 0 ? item.askingPrice * currentWeight : 0
+                                      const potentialProfit = askingValue > 0 ? askingValue - item.totalCost : 0
+                                      return (
+                                        <tr key={item.id} className="hover:bg-gray-50">
+                                          <td className="px-4 py-2 text-sm font-medium">
+                                            <a href={`/inventory/${item.id}`} className="text-blue-600 hover:text-blue-800">{item.name}</a>
+                                          </td>
+                                          <td className="px-4 py-2 text-sm text-gray-500">{item.subcategory}</td>
+                                          <td className="px-4 py-2 text-right text-sm">{currentWeight.toFixed(3)}{unit}</td>
+                                          <td className="px-4 py-2 text-right text-sm font-medium">{item.availableWeight.toFixed(3)}{unit}</td>
+                                          <td className="px-4 py-2 text-right text-sm text-amber-600">
+                                            {onMemo > 0.0005 ? `${onMemo.toFixed(3)}${unit}` : "—"}
+                                          </td>
+                                          <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmt(item.totalCost)}</td>
+                                          <td className="px-4 py-2 text-right text-sm text-gray-500">${fmt(avgPerUnit)}/{unit}</td>
+                                          <td className="px-4 py-2 text-right text-sm text-gray-500">
+                                            {editingAsk === item.id ? (
+                                              <input type="number" step="0.01" className="w-20 text-right border rounded px-1 py-0.5 text-sm"
+                                                value={askValue} onChange={e => setAskValue(e.target.value)} autoFocus
+                                                onBlur={() => saveAskingPrice(item, "unit")}
+                                                onKeyDown={e => { if (e.key === "Enter") saveAskingPrice(item, "unit"); if (e.key === "Escape") setEditingAsk(null) }}
+                                              />
+                                            ) : (
+                                              <span className="cursor-pointer hover:text-blue-600"
+                                                onClick={() => { setEditingAsk(item.id); setAskValue(item.askingPrice > 0 ? item.askingPrice.toString() : "") }}>
+                                                {item.askingPrice > 0 ? `$${fmt(item.askingPrice)}/${unit}` : "—"}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">
+                                            {editingAsk === `${item.id}:total` ? (
+                                              <input type="number" step="0.01" className="w-24 text-right border rounded px-1 py-0.5 text-sm"
+                                                value={askValue} onChange={e => setAskValue(e.target.value)} autoFocus
+                                                onBlur={() => saveAskingPrice(item, "total")}
+                                                onKeyDown={e => { if (e.key === "Enter") saveAskingPrice(item, "total"); if (e.key === "Escape") setEditingAsk(null) }}
+                                              />
+                                            ) : (
+                                              <span className="cursor-pointer hover:text-blue-800"
+                                                onClick={() => { setEditingAsk(`${item.id}:total`); setAskValue(askingValue > 0 ? askingValue.toFixed(2) : "") }}>
+                                                {askingValue > 0 ? `$${fmt(askingValue)}` : "—"}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className={`px-4 py-2 text-right text-sm font-medium ${potentialProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                            {askingValue > 0 ? `$${fmt(potentialProfit)}` : "—"}
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                  <tfoot className="bg-gray-50 font-semibold text-sm">
+                                    <tr>
+                                      <td className="px-4 py-2" colSpan={5}>Subtotal</td>
+                                      <td className="px-4 py-2 text-right text-orange-600">${fmt(groupCost)}</td>
+                                      <td className="px-4 py-2" colSpan={2}></td>
+                                      <td className="px-4 py-2 text-right text-blue-600">
+                                        {groupAskVal > 0 ? `$${fmt(groupAskVal)}` : "—"}
+                                      </td>
+                                      <td className={`px-4 py-2 text-right ${groupProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                        {groupAskVal > 0 ? `$${fmt(groupProfit)}` : "—"}
+                                      </td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            )
+                          })}
+                          {/* Grand total */}
+                          <div className="bg-gray-800 text-white rounded-lg shadow p-4 flex justify-between items-center">
+                            <span className="font-semibold">Grand Total ({valuationItems.length} items)</span>
+                            <div className="flex gap-8 text-sm">
+                              <span>Cost: <span className="font-bold">${fmt(totalStockCost)}</span></span>
+                              <span>Asking: <span className="font-bold">{totalAskingValue > 0 ? `$${fmt(totalAskingValue)}` : "—"}</span></span>
+                              {totalAskingValue > 0 && (
+                                <span className={totalAskingValue - totalStockCost >= 0 ? "text-green-400" : "text-red-400"}>
+                                  Profit: <span className="font-bold">${fmt(totalAskingValue - totalStockCost)}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </>
                 )}
               </div>

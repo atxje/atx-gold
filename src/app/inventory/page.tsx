@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -52,6 +52,7 @@ interface InventoryItem {
   purchases: { id: string }[]
   diamondDetails: DiamondDetails | null
   jewelryDetails: JewelryDetails | null
+  watchDetails: { brand: string | null; referenceNumber: string | null; serialNumber: string | null; caseMetal: string | null; caseSizeMM: string | null; box: boolean; paperwork: boolean } | null
 }
 
 const unitLabels: Record<string, string> = { GRAM: "g", TROY_OZ: "oz", CARAT: "ct" }
@@ -61,7 +62,7 @@ const GRAMS_PER_TROY_OZ = 31.1035
 
 // Scrap gold: purity × 98% pay rate
 const GOLD_SCRAP_PURITY: Record<string, number> = {
-  "10K": 0.395, "14K": 0.565, "18K": 0.73, "21K+": 0.875, "22K": 0.9167, "24K": 0.99, "Mixed W/D": 0,
+  "10K": 0.395, "14K": 0.565, "18K": 0.73, "21K+": 0.875, "22K": 0.9167, "24K": 0.99, "Mixed W/D": 0.565,
 }
 const GOLD_SCRAP_PAY_RATE = 0.98
 
@@ -103,6 +104,7 @@ export default function InventoryPage() {
   const [allFilterChips, setAllFilterChips] = useState<{ label: string; key: string }[]>([])
   const [diamondCategoryNames, setDiamondCategoryNames] = useState<Set<string>>(new Set())
   const [jewelryCategoryNames, setJewelryCategoryNames] = useState<Set<string>>(new Set())
+  const [watchCategoryNames, setWatchCategoryNames] = useState<Set<string>>(new Set())
   const [goldCategoryNames, setGoldCategoryNames] = useState<Set<string>>(new Set())
   const [silverCategoryNames, setSilverCategoryNames] = useState<Set<string>>(new Set())
   const [diamondSubcatKeys, setDiamondSubcatKeys] = useState<Set<string>>(new Set())
@@ -177,6 +179,8 @@ export default function InventoryPage() {
         setDiamondCategoryNames(new Set(dCats.map(c => c.name)))
         const jCats = cats.filter(c => c.metalType === "JEWELRY")
         setJewelryCategoryNames(new Set(jCats.map(c => c.name)))
+        const wCats = cats.filter(c => c.metalType === "WATCH")
+        setWatchCategoryNames(new Set(wCats.map(c => c.name)))
         setGoldCategoryNames(new Set(cats.filter(c => c.metalType === "GOLD" || c.metalType === "PLATINUM" || c.metalType === "PALLADIUM").map(c => c.name)))
         setSilverCategoryNames(new Set(cats.filter(c => c.metalType === "SILVER").map(c => c.name)))
         // Build filter chips: non-diamond as-is, diamonds split into "Single Diamond" and "Mixed/Parcels"
@@ -291,17 +295,43 @@ export default function InventoryPage() {
   const isFiltered = filterCats.size > 0
   const activeItems = isFiltered ? allActive.filter(itemMatchesFilter) : allActive
   const filteredAll = isFiltered ? items.filter(itemMatchesFilter) : items
-  const goldScrapItems = activeItems.filter(i => goldCategoryNames.has(i.category) && i.weightUnit === "GRAM")
-  const goldBullionItems = activeItems.filter(i => goldCategoryNames.has(i.category) && i.weightUnit === "TROY_OZ")
-  const silverScrapItems = activeItems.filter(i => silverCategoryNames.has(i.category) && i.weightUnit === "GRAM")
-  const silverBullionItems = activeItems.filter(i => silverCategoryNames.has(i.category) && i.weightUnit === "TROY_OZ")
-  // Keep combined for backwards compat with filter logic
-  const goldItems = activeItems.filter(i => goldCategoryNames.has(i.category))
-  const silverItems = activeItems.filter(i => silverCategoryNames.has(i.category))
-  const diamondItems = activeItems.filter(i => diamondCategoryNames.has(i.category))
-  const jewelryItems = activeItems.filter(i => jewelryCategoryNames.has(i.category))
-  const otherItems = activeItems.filter(i => !goldCategoryNames.has(i.category) && !silverCategoryNames.has(i.category) && !diamondCategoryNames.has(i.category) && !jewelryCategoryNames.has(i.category))
   const totalCost = activeItems.reduce((s, i) => s + i.totalCost, 0)
+
+  // Group items by category
+  type SectionType = "metal" | "jewelry" | "watch" | "diamond" | "other"
+  function getSectionType(category: string): SectionType {
+    if (diamondCategoryNames.has(category)) return "diamond"
+    if (jewelryCategoryNames.has(category)) return "jewelry"
+    if (watchCategoryNames.has(category)) return "watch"
+    if (goldCategoryNames.has(category) || silverCategoryNames.has(category)) return "metal"
+    return "other"
+  }
+
+  const categoryGroups: { category: string; type: SectionType; items: InventoryItem[] }[] = []
+  const catGroupMap = new Map<string, InventoryItem[]>()
+  for (const item of activeItems) {
+    if (!catGroupMap.has(item.category)) catGroupMap.set(item.category, [])
+    catGroupMap.get(item.category)!.push(item)
+  }
+  // Sort: metals first, then jewelry, watches, diamonds, other
+  const typeOrder: Record<SectionType, number> = { metal: 0, jewelry: 1, watch: 2, diamond: 3, other: 4 }
+  for (const [category, items] of catGroupMap) {
+    categoryGroups.push({ category, type: getSectionType(category), items })
+  }
+  categoryGroups.sort((a, b) => typeOrder[a.type] - typeOrder[b.type] || a.category.localeCompare(b.category))
+
+  // Partition by type so all categories of the same type share one table (aligned columns)
+  const typeGroupsMap = new Map<SectionType, { category: string; items: InventoryItem[] }[]>()
+  for (const g of categoryGroups) {
+    if (!typeGroupsMap.has(g.type)) typeGroupsMap.set(g.type, [])
+    typeGroupsMap.get(g.type)!.push({ category: g.category, items: g.items })
+  }
+  const typeGroups: { type: SectionType; groups: { category: string; items: InventoryItem[] }[] }[] = []
+  for (const t of ["metal", "jewelry", "watch", "diamond", "other"] as SectionType[]) {
+    const groups = typeGroupsMap.get(t)
+    if (groups && groups.length) typeGroups.push({ type: t, groups })
+  }
+
   const totalSoldValue = filteredAll.reduce((s, i) => s + i.soldValue, 0)
   const totalProfit = filteredAll.reduce((s, i) => s + i.totalProfit, 0)
 
@@ -456,478 +486,306 @@ export default function InventoryPage() {
             <Link href="/purchases/new" className="text-blue-600 hover:underline">Record your first purchase</Link>
           </div>
         ) : (
-          <div className="space-y-8">
-            {[
-              { title: "Scrap Gold", items: goldScrapItems, showMelt: true },
-              { title: "Gold Bullion", items: goldBullionItems, showMelt: true },
-              { title: "Scrap Silver", items: silverScrapItems, showMelt: true },
-              { title: "Silver Bullion", items: silverBullionItems, showMelt: true },
-            ].map(({ title, items: sectionItems, showMelt }) => sectionItems.length > 0 && (
-              <div key={title}>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">{title}</h2>
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 w-8">
-                          <input type="checkbox"
-                            checked={sectionItems.length > 0 && sectionItems.every(i => selected.has(i.id))}
-                            onChange={() => {
-                              const allSelected = sectionItems.every(i => selected.has(i.id))
-                              setSelected(prev => {
-                                const next = new Set(prev)
-                                sectionItems.forEach(i => allSelected ? next.delete(i.id) : next.add(i.id))
-                                return next
-                              })
-                            }}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Office</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Memo</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        {spotPrices && <th className="px-4 py-3 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Avg/Unit</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ask/Unit</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sold</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {sectionItems.map((item) => {
-                        const unit = unitLabels[item.weightUnit] || "g"
-                        const currentWeight = item.totalWeight - item.soldWeight
-                        const avgPerUnit = currentWeight > 0 ? item.totalCost / currentWeight : 0
-                        const profitPositive = item.totalProfit >= 0
-                        const melt = meltValue(item)
-                        return (
-                          <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
-                            <td className="px-4 py-4 w-8">
-                              <input type="checkbox" checked={selected.has(item.id)}
-                                onChange={() => toggleSelect(item.id)}
-                                onClick={e => e.stopPropagation()}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                            </td>
-                            <td className="px-4 py-4">
-                              <Link href={`/inventory/${item.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
-                                {item.itemCode ? item.name : (item.subcategory || item.name)}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              {item.quantity > 0 ? item.quantity : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-700">
-                              {currentWeight.toFixed(3)}{unit}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm font-medium text-gray-900">
-                              {item.availableWeight.toFixed(3)}{unit}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-amber-600">
-                              {(() => {
-                                const onMemo = item.totalWeight - item.availableWeight - item.soldWeight
-                                return onMemo > 0.0005 ? `${onMemo.toFixed(3)}${unit}` : "—"
-                              })()}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">
-                              ${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                            </td>
-                            {spotPrices && (
-                              <td className="px-4 py-4 text-right text-sm font-medium text-amber-700">
-                                {melt !== null ? `$${melt.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-                              </td>
-                            )}
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              ${avgPerUnit.toFixed(2)}/{unit}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              {askCell(item, unit)}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              {item.soldWeight > 0 ? `${item.soldWeight.toFixed(3)}${unit}` : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-blue-600 font-medium">
-                              {item.soldValue > 0 ? `$${item.soldValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm font-semibold">
-                              {item.soldValue > 0 ? (
-                                <span className={profitPositive ? "text-green-600" : "text-red-600"}>
-                                  {profitPositive ? "+" : ""}${item.totalProfit.toFixed(2)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                              <button
-                                onClick={() => toggleStatus(item)}
-                                disabled={updatingStatus === item.id}
-                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-                                  item.status === "ON_STOCK"
-                                    ? "bg-green-100 text-green-800 hover:bg-green-200"
-                                    : "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                                }`}
-                              >
-                                {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-gray-50 border-t-2 border-gray-200">
-                        <td className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total Cost</td>
-                        <td className="px-4 py-3 text-left text-sm font-bold text-orange-600">
-                          ${sectionItems.reduce((s, i) => s + i.totalCost, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                        </td>
-                        {spotPrices && (
-                          <td className="px-4 py-3 text-left text-sm font-bold text-amber-700">
-                            Melt: ${sectionItems.reduce((s, i) => s + (meltValue(i) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                          </td>
-                        )}
-                        <td colSpan={spotPrices ? 9 : 10} />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            ))}
+          <div className="space-y-6">
+            {(() => {
+              const statusBtn = (item: InventoryItem) => (
+                <button onClick={() => toggleStatus(item)} disabled={updatingStatus === item.id}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+                    item.status === "ON_STOCK" ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                  }`}>
+                  {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
+                </button>
+              )
+              const itemCheckbox = (item: InventoryItem) => (
+                <input type="checkbox" checked={selected.has(item.id)}
+                  onChange={() => toggleSelect(item.id)} onClick={e => e.stopPropagation()}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              )
+              const itemLink = (item: InventoryItem) => (
+                <Link href={`/inventory/${item.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                  {item.itemCode ? item.name : (item.subcategory || item.name)}
+                </Link>
+              )
+              const profitCell = (item: InventoryItem) => {
+                const pp = item.totalProfit >= 0
+                return item.soldValue > 0
+                  ? <span className={pp ? "text-green-600" : "text-red-600"}>{pp ? "+" : ""}${item.totalProfit.toFixed(2)}</span>
+                  : "—"
+              }
+              const fmtMoney = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2 })
 
-            {/* Other items (categories not matching gold/silver/diamond/jewelry) */}
-            {otherItems.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">Other</h2>
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 w-8">
-                          <input type="checkbox"
-                            checked={otherItems.every(i => selected.has(i.id))}
-                            onChange={() => {
-                              const allSelected = otherItems.every(i => selected.has(i.id))
-                              setSelected(prev => {
-                                const next = new Set(prev)
-                                otherItems.forEach(i => allSelected ? next.delete(i.id) : next.add(i.id))
-                                return next
-                              })
-                            }}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {otherItems.map((item) => {
-                        const unit = unitLabels[item.weightUnit] || "g"
-                        const currentWeight = item.totalWeight - item.soldWeight
-                        const profitPositive = item.totalProfit >= 0
-                        return (
-                          <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
-                            <td className="px-4 py-4 w-8">
-                              <input type="checkbox" checked={selected.has(item.id)}
-                                onChange={() => toggleSelect(item.id)}
-                                onClick={e => e.stopPropagation()}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                            </td>
-                            <td className="px-4 py-4">
-                              <Link href={`/inventory/${item.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
-                                {item.itemCode ? item.name : (item.subcategory || item.name)}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-700">{currentWeight.toFixed(3)}{unit}</td>
-                            <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                            <td className="px-4 py-4 text-right text-sm text-blue-600 font-medium">
-                              {item.soldValue > 0 ? `$${item.soldValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm font-semibold">
-                              {item.soldValue > 0 ? (
-                                <span className={profitPositive ? "text-green-600" : "text-red-600"}>
-                                  {profitPositive ? "+" : ""}${item.totalProfit.toFixed(2)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                              <button onClick={() => toggleStatus(item)} disabled={updatingStatus === item.id}
-                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-                                  item.status === "ON_STOCK" ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                                }`}>
-                                {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-gray-50 border-t-2 border-gray-200">
-                        <td className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total Cost</td>
-                        <td className="px-4 py-3 text-left text-sm font-bold text-orange-600">
-                          ${otherItems.reduce((s, i) => s + i.totalCost, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td colSpan={5} />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            )}
+              const renderItemRow = (type: SectionType, item: InventoryItem) => {
+                const unit = unitLabels[item.weightUnit] || "g"
+                const currentWeight = item.totalWeight - item.soldWeight
+                const onMemo = item.totalWeight - item.availableWeight - item.soldWeight
 
-            {/* Jewelry Table */}
-            {jewelryItems.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">Jewelry</h2>
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 w-8">
-                          <input type="checkbox"
-                            checked={jewelryItems.length > 0 && jewelryItems.every(i => selected.has(i.id))}
-                            onChange={() => {
-                              const allSelected = jewelryItems.every(i => selected.has(i.id))
-                              setSelected(prev => {
-                                const next = new Set(prev)
-                                jewelryItems.forEach(i => allSelected ? next.delete(i.id) : next.add(i.id))
-                                return next
-                              })
-                            }}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Metal</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stone</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        {spotPrices && <th className="px-4 py-3 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">$/g</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ask/g</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {jewelryItems.map((item) => {
-                        const jd = item.jewelryDetails
-                        const currentWeight = item.totalWeight - item.soldWeight
-                        const costPerG = currentWeight > 0 ? item.totalCost / currentWeight : (jd?.costPerGram || 0)
-                        const profitPositive = item.totalProfit >= 0
-                        const melt = meltValue(item)
-                        return (
-                          <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
-                            <td className="px-4 py-4 w-8">
-                              <input type="checkbox" checked={selected.has(item.id)}
-                                onChange={() => toggleSelect(item.id)}
-                                onClick={e => e.stopPropagation()}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                            </td>
-                            <td className="px-4 py-4">
-                              <Link href={`/inventory/${item.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
-                                {item.itemCode ? item.name : (item.subcategory || item.name)}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
-                            <td className="px-3 py-4 text-sm text-gray-700">{jd?.metal || "—"}</td>
-                            <td className="px-3 py-4 text-sm text-gray-700">{jd?.brand || "—"}</td>
-                            <td className="px-3 py-4 text-sm text-gray-700">{jd?.mainStone || "—"}</td>
-                            <td className="px-4 py-4 text-right text-sm font-medium text-gray-900">
-                              {currentWeight.toFixed(2)}g
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">
-                              ${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                            </td>
-                            {spotPrices && (
-                              <td className="px-4 py-4 text-right text-sm font-medium text-amber-700">
-                                {melt !== null ? `$${melt.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-                              </td>
-                            )}
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              ${costPerG.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              {askCell(item, "g")}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-blue-600 font-medium">
-                              {item.soldValue > 0 ? `$${item.soldValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm font-semibold">
-                              {item.soldValue > 0 ? (
-                                <span className={profitPositive ? "text-green-600" : "text-red-600"}>
-                                  {profitPositive ? "+" : ""}${item.totalProfit.toFixed(2)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                              <button
-                                onClick={() => toggleStatus(item)}
-                                disabled={updatingStatus === item.id}
-                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-                                  item.status === "ON_STOCK"
-                                    ? "bg-green-100 text-green-800 hover:bg-green-200"
-                                    : "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                                }`}
-                              >
-                                {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-gray-50 border-t-2 border-gray-200">
-                        <td className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total Cost</td>
-                        <td className="px-4 py-3 text-left text-sm font-bold text-orange-600">
-                          ${jewelryItems.reduce((s, i) => s + i.totalCost, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                        </td>
-                        {spotPrices && (
-                          <td className="px-4 py-3 text-left text-sm font-bold text-amber-700">
-                            Melt: ${jewelryItems.reduce((s, i) => s + (meltValue(i) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                          </td>
-                        )}
-                        <td colSpan={spotPrices ? 9 : 10} />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            )}
+                if (type === "metal") {
+                  const avgPerUnit = currentWeight > 0 ? item.totalCost / currentWeight : 0
+                  const melt = meltValue(item)
+                  return (
+                    <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                      <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                      <td className="px-4 py-2">{itemLink(item)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-700">{currentWeight.toFixed(3)}{unit}</td>
+                      <td className="px-4 py-2 text-right text-sm font-medium text-gray-900">{item.availableWeight.toFixed(3)}{unit}</td>
+                      <td className="px-4 py-2 text-right text-sm text-amber-600">{onMemo > 0.0005 ? `${onMemo.toFixed(3)}${unit}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">${avgPerUnit.toFixed(2)}/{unit}</td>
+                      <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                      {spotPrices && <td className="px-4 py-2 text-right text-sm font-medium text-amber-700">{melt !== null ? `$${fmtMoney(melt)}` : "—"}</td>}
+                      {spotPrices && <td className="px-4 py-2 text-right text-sm font-medium text-amber-700">{melt !== null && currentWeight > 0 ? `$${(melt / currentWeight).toFixed(2)}/${unit}` : "—"}</td>}
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{item.soldWeight > 0 ? `${item.soldWeight.toFixed(3)}${unit}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                      <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                    </tr>
+                  )
+                }
 
-            {/* Diamonds Table */}
-            {diamondItems.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">Diamonds</h2>
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 w-8">
-                          <input type="checkbox"
-                            checked={diamondItems.length > 0 && diamondItems.every(i => selected.has(i.id))}
-                            onChange={() => {
-                              const allSelected = diamondItems.every(i => selected.has(i.id))
-                              setSelected(prev => {
-                                const next = new Set(prev)
-                                diamondItems.forEach(i => allSelected ? next.delete(i.id) : next.add(i.id))
-                                return next
-                              })
-                            }}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shape</th>
-                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ct</th>
-                        <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Color</th>
-                        <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Clarity</th>
-                        <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Cut</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lab / Cert</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">$/ct</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ask/ct</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {diamondItems.map((item) => {
-                        const dd = item.diamondDetails
-                        const currentWeight = item.totalWeight - item.soldWeight
-                        const costPerCt = currentWeight > 0 ? item.totalCost / currentWeight : (dd?.costPerCarat || 0)
-                        const profitPositive = item.totalProfit >= 0
-                        return (
-                          <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
-                            <td className="px-4 py-4 w-8">
-                              <input type="checkbox" checked={selected.has(item.id)}
-                                onChange={() => toggleSelect(item.id)}
-                                onClick={e => e.stopPropagation()}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                            </td>
-                            <td className="px-4 py-4">
-                              <Link href={`/inventory/${item.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
-                                {item.itemCode ? item.name : (item.subcategory || item.name)}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
-                            <td className="px-3 py-4 text-sm text-gray-700">
-                              {dd?.shape || "—"}
-                            </td>
-                            <td className="px-3 py-4 text-right text-sm font-medium text-gray-900">
-                              {dd?.caratWeight ? dd.caratWeight.toFixed(2) : currentWeight.toFixed(2)}
-                            </td>
-                            <td className="px-3 py-4 text-center text-sm text-gray-700">
-                              {dd?.color || "—"}
-                            </td>
-                            <td className="px-3 py-4 text-center text-sm text-gray-700">
-                              {dd?.clarity || "—"}
-                            </td>
-                            <td className="px-3 py-4 text-center text-sm text-gray-700">
-                              {dd?.cutGrade || "—"}
-                            </td>
-                            <td className="px-3 py-4 text-sm text-gray-600">
-                              {dd?.lab && dd.certNumber
-                                ? <span>{dd.lab} <span className="text-gray-400">{dd.certNumber}</span></span>
-                                : dd?.lab || "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-orange-600 font-medium">
-                              ${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              ${costPerCt.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-gray-500">
-                              {askCell(item, "ct")}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm text-blue-600 font-medium">
-                              {item.soldValue > 0 ? `$${item.soldValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-right text-sm font-semibold">
-                              {item.soldValue > 0 ? (
-                                <span className={profitPositive ? "text-green-600" : "text-red-600"}>
-                                  {profitPositive ? "+" : ""}${item.totalProfit.toFixed(2)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                              <button
-                                onClick={() => toggleStatus(item)}
-                                disabled={updatingStatus === item.id}
-                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-                                  item.status === "ON_STOCK"
-                                    ? "bg-green-100 text-green-800 hover:bg-green-200"
-                                    : "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                                }`}
-                              >
-                                {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-gray-50 border-t-2 border-gray-200">
-                        <td className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total Cost</td>
-                        <td className="px-4 py-3 text-left text-sm font-bold text-orange-600">
-                          ${diamondItems.reduce((s, i) => s + i.totalCost, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td colSpan={12} />
-                      </tr>
-                    </tfoot>
-                  </table>
+                if (type === "jewelry") {
+                  const jd = item.jewelryDetails
+                  const costPerG = currentWeight > 0 ? item.totalCost / currentWeight : (jd?.costPerGram || 0)
+                  const melt = meltValue(item)
+                  return (
+                    <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                      <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                      <td className="px-4 py-2">{itemLink(item)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{jd?.metal || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{jd?.brand || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{jd?.mainStone || "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm font-medium text-gray-900">{currentWeight.toFixed(2)}g</td>
+                      <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                      {spotPrices && <td className="px-4 py-2 text-right text-sm font-medium text-amber-700">{melt !== null ? `$${fmtMoney(melt)}` : "—"}</td>}
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">${costPerG.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{askCell(item, "g")}</td>
+                      <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                      <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                    </tr>
+                  )
+                }
+
+                if (type === "watch") {
+                  const wd = item.watchDetails
+                  return (
+                    <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                      <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                      <td className="px-4 py-2">{itemLink(item)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{wd?.brand || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{wd?.caseMetal || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{wd?.caseSizeMM || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{wd?.referenceNumber || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{wd?.serialNumber || "—"}</td>
+                      <td className="px-3 py-2 text-center text-sm text-gray-700">{wd?.box ? "Yes" : "—"}</td>
+                      <td className="px-3 py-2 text-center text-sm text-gray-700">{wd?.paperwork ? "Yes" : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{askCell(item, "ea")}</td>
+                      <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                      <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                    </tr>
+                  )
+                }
+
+                if (type === "diamond") {
+                  const dd = item.diamondDetails
+                  const costPerCt = currentWeight > 0 ? item.totalCost / currentWeight : (dd?.costPerCarat || 0)
+                  return (
+                    <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                      <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                      <td className="px-4 py-2">{itemLink(item)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-700">{dd?.shape || "—"}</td>
+                      <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">{dd?.caratWeight ? dd.caratWeight.toFixed(2) : currentWeight.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-center text-sm text-gray-700">{dd?.color || "—"}</td>
+                      <td className="px-3 py-2 text-center text-sm text-gray-700">{dd?.clarity || "—"}</td>
+                      <td className="px-3 py-2 text-center text-sm text-gray-700">{dd?.cutGrade || "—"}</td>
+                      <td className="px-3 py-2 text-sm text-gray-600">{dd?.lab && dd.certNumber ? <span>{dd.lab} <span className="text-gray-400">{dd.certNumber}</span></span> : dd?.lab || "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">${costPerCt.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-right text-sm text-gray-500">{askCell(item, "ct")}</td>
+                      <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                      <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                    </tr>
+                  )
+                }
+
+                // other
+                return (
+                  <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                    <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                    <td className="px-4 py-2">{itemLink(item)}</td>
+                    <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                    <td className="px-4 py-2 text-right text-sm text-gray-700">{currentWeight.toFixed(3)}{unit}</td>
+                    <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                    <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                    <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                    <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                  </tr>
+                )
+              }
+
+              const renderHeader = (type: SectionType, allItemsInType: InventoryItem[]) => {
+                const typeCheckbox = (
+                  <input type="checkbox"
+                    checked={allItemsInType.length > 0 && allItemsInType.every(i => selected.has(i.id))}
+                    onChange={() => {
+                      const allSel = allItemsInType.every(i => selected.has(i.id))
+                      setSelected(prev => { const n = new Set(prev); allItemsInType.forEach(i => allSel ? n.delete(i.id) : n.add(i.id)); return n })
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                )
+                if (type === "metal") return (
+                  <tr>
+                    <th className="px-4 py-2 w-8">{typeCheckbox}</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Office</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Memo</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Avg/Unit</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                    {spotPrices && <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
+                    {spotPrices && <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Melt/Unit</th>}
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Sold</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                )
+                if (type === "jewelry") return (
+                  <tr>
+                    <th className="px-4 py-2 w-8">{typeCheckbox}</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Metal</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Stone</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                    {spotPrices && <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">$/g</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask/g</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                )
+                if (type === "watch") return (
+                  <tr>
+                    <th className="px-4 py-2 w-8">{typeCheckbox}</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Metal</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ref #</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Serial #</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Box</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Papers</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                )
+                if (type === "diamond") return (
+                  <tr>
+                    <th className="px-4 py-2 w-8">{typeCheckbox}</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Shape</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ct</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Color</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Clarity</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cut</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Lab / Cert</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">$/ct</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask/ct</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                )
+                return (
+                  <tr>
+                    <th className="px-4 py-2 w-8">{typeCheckbox}</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                )
+              }
+
+              const typeLabels: Record<SectionType, string> = {
+                metal: "Metals",
+                jewelry: "Jewelry",
+                watch: "Watches",
+                diamond: "Diamonds",
+                other: "Other",
+              }
+
+              return typeGroups.map(({ type, groups }) => {
+                const allItemsInType = groups.flatMap(g => g.items)
+                const hasMelt = type === "metal" || type === "jewelry"
+                return (
+                  <div key={type} className="bg-white rounded-lg shadow overflow-x-auto">
+                    <div className="px-4 py-2 bg-gray-800 text-white text-sm font-semibold">
+                      {typeLabels[type]} <span className="text-xs font-normal text-gray-300">({allItemsInType.length})</span>
+                    </div>
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        {renderHeader(type, allItemsInType)}
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {groups.map(({ category, items: grpItems }) => {
+                          const grpCost = grpItems.reduce((s, i) => s + i.totalCost, 0)
+                          const grpMelt = spotPrices ? grpItems.reduce((s, i) => s + (meltValue(i) || 0), 0) : 0
+                          const subtotalColSpan = type === "metal" ? 7 : type === "jewelry" ? 7 : type === "watch" ? 10 : type === "diamond" ? 9 : 4
+                          return (
+                            <React.Fragment key={category}>
+                              <tr className="bg-gray-100">
+                                <td className="px-4 py-1.5 text-xs font-semibold text-gray-700 uppercase tracking-wide" colSpan={20}>
+                                  {category} <span className="text-gray-500 normal-case font-normal">({grpItems.length})</span>
+                                </td>
+                              </tr>
+                              {grpItems.map(item => renderItemRow(type, item))}
+                              <tr className="bg-gray-50 font-semibold text-sm">
+                                <td className="px-4 py-2" colSpan={subtotalColSpan}>Subtotal</td>
+                                <td className="px-4 py-2 text-right text-orange-600">${fmtMoney(grpCost)}</td>
+                                {hasMelt && spotPrices && <td className="px-4 py-2 text-right text-amber-700">${fmtMoney(grpMelt)}</td>}
+                                <td colSpan={10} />
+                              </tr>
+                            </React.Fragment>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })
+            })()}
+
+            {/* Grand total */}
+            {categoryGroups.length > 1 && (
+              <div className="bg-gray-800 text-white rounded-lg shadow p-4 flex justify-between items-center">
+                <span className="font-semibold">Grand Total ({activeItems.length} items)</span>
+                <div className="flex gap-8 text-sm">
+                  <span>Cost: <span className="font-bold">${totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span></span>
+                  {spotPrices && (
+                    <span>Melt: <span className="font-bold text-amber-300">
+                      ${activeItems.reduce((s, i) => s + (meltValue(i) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </span></span>
+                  )}
                 </div>
               </div>
             )}

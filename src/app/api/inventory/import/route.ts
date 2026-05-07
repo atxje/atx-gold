@@ -40,6 +40,11 @@ export async function POST(request: Request) {
         jewelryData?: {
           metal?: string; brand?: string; mainStone?: string; costPerGram?: number
         }
+        watchData?: {
+          brand?: string; referenceNumber?: string; serialNumber?: string
+          caseMetal?: string; caseSizeMM?: string
+          box?: boolean; paperwork?: boolean
+        }
       }[]
     }
 
@@ -55,11 +60,11 @@ export async function POST(request: Request) {
       const parsedCost = cost || 0
       const parsedQuantity = quantity || 0
       const parsedWeightUnit = (weightUnit as WeightUnit) || WeightUnit.GRAM
-      const isUniqueItem = metalType === "DIAMOND" || metalType === "JEWELRY"
+      const isUniqueItem = metalType === "DIAMOND" || metalType === "JEWELRY" || metalType === "WATCH"
 
       if (isUniqueItem) {
         // Generate item code
-        const prefix = metalType === "DIAMOND" ? "D" : "J"
+        const prefix = metalType === "DIAMOND" ? "D" : metalType === "WATCH" ? "W" : "J"
         const lastCoded = await prisma.inventoryItem.findFirst({
           where: { itemCode: { startsWith: prefix } },
           orderBy: { itemCode: "desc" },
@@ -117,6 +122,20 @@ export async function POST(request: Request) {
               brand: jd.brand || null,
               mainStone: jd.mainStone || null,
               costPerGram: jd.costPerGram || null,
+            },
+          })
+        } else if (metalType === "WATCH" && item.watchData) {
+          const wd = item.watchData
+          await prisma.watchDetails.create({
+            data: {
+              inventoryItemId: inventoryItem.id,
+              brand: wd.brand || null,
+              referenceNumber: wd.referenceNumber || null,
+              serialNumber: wd.serialNumber || null,
+              caseMetal: wd.caseMetal || null,
+              caseSizeMM: wd.caseSizeMM || null,
+              box: wd.box || false,
+              paperwork: wd.paperwork || false,
             },
           })
         }

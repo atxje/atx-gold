@@ -58,6 +58,30 @@ const JEWELRY_COL_HEADERS = [
   "Metal", "Brand", "Main Stone", "Weight (g)", "$/g", "Total",
 ]
 
+interface WatchData {
+  brand: string
+  referenceNumber: string
+  serialNumber: string
+  caseMetal: string
+  caseSizeMM: string
+  description: string
+  totalCost: string
+  box: boolean
+  paperwork: boolean
+}
+
+const WATCH_BRANDS = ["", "Rolex", "Cartier", "Omega", "Audemars Piguet", "Patek Philippe", "Breitling", "Tag Heuer", "IWC", "Panerai", "Tudor", "Hublot", "Other"]
+const WATCH_METALS = ["", "SS", "Gold", "Platinum", "Two-Tone", "Titanium", "Ceramic"]
+const WATCH_SIZES = ["", "26mm", "28mm", "31mm", "34mm", "36mm", "38mm", "39mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm"]
+
+const emptyWatchData: WatchData = {
+  brand: "", referenceNumber: "", serialNumber: "", caseMetal: "", caseSizeMM: "", description: "", totalCost: "", box: false, paperwork: false,
+}
+
+const WATCH_COL_HEADERS = [
+  "Brand", "Metal", "Size", "Ref #", "Serial #", "Description", "Box", "Papers", "Total Cost",
+]
+
 interface Lead {
   id: string
   name: string
@@ -88,6 +112,7 @@ interface LineItem {
   lastEdited: "pricePerUnit" | "pricePaid"
   diamondData?: DiamondData
   jewelryData?: JewelryData
+  watchData?: WatchData
   itemCode?: string
   weightUnit?: string
 }
@@ -176,7 +201,8 @@ function NewPurchaseForm() {
   const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
   const [payments, setPayments] = useState<PaymentEntry[]>([])
   const [lineItems, setLineItems] = useState<LineItem[]>([newLineItem(1)])
-  const [nextId, setNextId] = useState(2)
+  const nextIdRef = useRef(2)
+  const getNextId = () => nextIdRef.current++
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(loadVisibleCols)
   const [showColMenu, setShowColMenu] = useState(false)
   const [focusLastRow, setFocusLastRow] = useState(false)
@@ -230,6 +256,7 @@ function NewPurchaseForm() {
           const regularRows: LineItem[] = []
           const diamondRows: LineItem[] = []
           const jewelryRows: LineItem[] = []
+          const watchRows: LineItem[] = []
           let counter = 1
           for (const item of items) {
             const catEntry = Object.entries(catMap).find(([, c]) => c.label === item.category)
@@ -282,6 +309,25 @@ function NewPurchaseForm() {
                 totalPrice: item.pricePaid.toString(),
               }
               jewelryRows.push(base)
+            } else if (item.inventoryItem?.watchDetails || item.metalType === "WATCH" || catDef?.metalType === "WATCH") {
+              const wd = item.inventoryItem?.watchDetails
+              // Ensure watch category is set even if label didn't match
+              if (!base.category) {
+                const wCatEntry = Object.entries(catMap).find(([, c]) => c.metalType === "WATCH")
+                base.category = wCatEntry?.[0] || ""
+              }
+              base.watchData = {
+                brand: wd?.brand || "",
+                referenceNumber: wd?.referenceNumber || "",
+                serialNumber: wd?.serialNumber || "",
+                caseMetal: wd?.caseMetal || "",
+                caseSizeMM: wd?.caseSizeMM || "",
+                description: "",
+                totalCost: item.pricePaid.toString(),
+                box: wd?.box || false,
+                paperwork: wd?.paperwork || false,
+              }
+              watchRows.push(base)
             } else {
               regularRows.push(base)
             }
@@ -295,7 +341,11 @@ function NewPurchaseForm() {
             setJewelryItems(jewelryRows)
             setShowJewelry(true)
           }
-          setNextId(counter)
+          if (watchRows.length > 0) {
+            setWatchItems(watchRows)
+            setShowWatches(true)
+          }
+          nextIdRef.current = counter
           setOriginalDbIds(items.map((item: { id: string }) => item.id))
           const total = items.reduce((s: number, item: { pricePaid: number }) => s + item.pricePaid, 0)
           if (total > 0) setTicketTotal(total.toString())
@@ -334,13 +384,11 @@ function NewPurchaseForm() {
   }
 
   function addLineItem() {
-    setLineItems([...lineItems, newLineItem(nextId)])
-    setNextId(nextId + 1)
+    setLineItems([...lineItems, newLineItem(getNextId())])
   }
 
   function addLineItemAndFocus() {
-    setLineItems(prev => [...prev, newLineItem(nextId)])
-    setNextId(prev => prev + 1)
+    setLineItems(prev => [...prev, newLineItem(getNextId())])
     setFocusLastRow(true)
   }
 
@@ -384,14 +432,19 @@ function NewPurchaseForm() {
   // Separate item lists for each section
   const [diamondItems, setDiamondItems] = useState<LineItem[]>([])
   const [jewelryItems, setJewelryItems] = useState<LineItem[]>([])
+  const [watchItems, setWatchItems] = useState<LineItem[]>([])
   const [showDiamonds, setShowDiamonds] = useState(false)
   const [showJewelry, setShowJewelry] = useState(false)
+  const [showWatches, setShowWatches] = useState(false)
   const diamondBodyRef = useRef<HTMLTableSectionElement>(null)
   const jewelryBodyRef = useRef<HTMLTableSectionElement>(null)
+  const watchBodyRef = useRef<HTMLTableSectionElement>(null)
   const [focusDiamondRow, setFocusDiamondRow] = useState(false)
   const [focusJewelryRow, setFocusJewelryRow] = useState(false)
+  const [focusWatchRow, setFocusWatchRow] = useState(false)
   const [nextDiamondNum, setNextDiamondNum] = useState<number>(0)
   const [nextJewelryNum, setNextJewelryNum] = useState<number>(0)
+  const [nextWatchNum, setNextWatchNum] = useState<number>(0)
   const [giaLoading, setGiaLoading] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
@@ -412,11 +465,28 @@ function NewPurchaseForm() {
     }
   }, [focusJewelryRow, jewelryItems])
 
-  async function fetchNextCode(prefix: "D" | "J"): Promise<number> {
+  useEffect(() => {
+    if (focusWatchRow && watchBodyRef.current) {
+      setFocusWatchRow(false)
+      const rows = watchBodyRef.current.querySelectorAll("tr")
+      const lastRow = rows[rows.length - 1]
+      lastRow?.querySelector<HTMLSelectElement | HTMLInputElement>("select,input")?.focus()
+    }
+  }, [focusWatchRow, watchItems])
+
+  async function fetchNextCode(prefix: "D" | "J" | "W"): Promise<number> {
     const res = await fetch(`/api/inventory/next-code?prefix=${prefix}`)
     if (!res.ok) return 1
     const { nextNum } = await res.json()
     return nextNum
+  }
+
+  function getNextCodeNum(items: LineItem[], prefix: string, baseNum: number): number {
+    const nums = items
+      .map(i => i.itemCode?.startsWith(prefix) ? parseInt(i.itemCode.slice(1)) : NaN)
+      .filter(n => !isNaN(n))
+    const maxInList = nums.length > 0 ? Math.max(...nums) : baseNum - 1
+    return maxInList + 1
   }
 
   async function toggleShowDiamonds() {
@@ -426,8 +496,8 @@ function NewPurchaseForm() {
       const singleSub = dCatEntry?.[1]?.subcategories.find(s => s.toLowerCase().includes("single")) || ""
       const num = await fetchNextCode("D")
       setNextDiamondNum(num + 1)
-      setDiamondItems([{ ...newLineItem(nextId), category: dCatId, subcategory: singleSub, diamondData: { ...emptyDiamondData }, itemCode: `D${String(num).padStart(4, "0")}` }])
-      setNextId(prev => prev + 1)
+      setDiamondItems([{ ...newLineItem(getNextId()), category: dCatId, subcategory: singleSub, diamondData: { ...emptyDiamondData }, itemCode: `D${String(num).padStart(4, "0")}` }])
+
     }
     setShowDiamonds(!showDiamonds)
   }
@@ -438,8 +508,8 @@ function NewPurchaseForm() {
       const jCatId = jCatEntry?.[0] || ""
       const num = await fetchNextCode("J")
       setNextJewelryNum(num + 1)
-      setJewelryItems([{ ...newLineItem(nextId), category: jCatId, jewelryData: { ...emptyJewelryData }, itemCode: `J${String(num).padStart(4, "0")}` }])
-      setNextId(prev => prev + 1)
+      setJewelryItems([{ ...newLineItem(getNextId()), category: jCatId, jewelryData: { ...emptyJewelryData }, itemCode: `J${String(num).padStart(4, "0")}` }])
+
     }
     setShowJewelry(!showJewelry)
   }
@@ -448,10 +518,11 @@ function NewPurchaseForm() {
     const dCatEntry = Object.entries(categories).find(([, c]) => c.metalType === "DIAMOND")
     const dCatId = dCatEntry?.[0] || ""
     const singleSub = dCatEntry?.[1]?.subcategories.find(s => s.toLowerCase().includes("single")) || ""
-    const code = `D${String(nextDiamondNum).padStart(4, "0")}`
-    setNextDiamondNum(prev => prev + 1)
-    setDiamondItems(prev => [...prev, { ...newLineItem(nextId), category: dCatId, subcategory: singleSub, diamondData: { ...emptyDiamondData }, itemCode: code }])
-    setNextId(prev => prev + 1)
+    const num = getNextCodeNum(diamondItems, "D", nextDiamondNum)
+    const code = `D${String(num).padStart(4, "0")}`
+    setNextDiamondNum(num + 1)
+    setDiamondItems(prev => [...prev, { ...newLineItem(getNextId()), category: dCatId, subcategory: singleSub, diamondData: { ...emptyDiamondData }, itemCode: code }])
+
     setFocusDiamondRow(true)
   }
 
@@ -466,10 +537,11 @@ function NewPurchaseForm() {
   function addJewelryRow() {
     const jCatEntry = Object.entries(categories).find(([, c]) => c.metalType === "JEWELRY")
     const jCatId = jCatEntry?.[0] || ""
-    const code = `J${String(nextJewelryNum).padStart(4, "0")}`
-    setNextJewelryNum(prev => prev + 1)
-    setJewelryItems(prev => [...prev, { ...newLineItem(nextId), category: jCatId, jewelryData: { ...emptyJewelryData }, itemCode: code }])
-    setNextId(prev => prev + 1)
+    const num = getNextCodeNum(jewelryItems, "J", nextJewelryNum)
+    const code = `J${String(num).padStart(4, "0")}`
+    setNextJewelryNum(num + 1)
+    setJewelryItems(prev => [...prev, { ...newLineItem(getNextId()), category: jCatId, jewelryData: { ...emptyJewelryData }, itemCode: code }])
+
     setFocusJewelryRow(true)
   }
 
@@ -479,6 +551,49 @@ function NewPurchaseForm() {
       if (next.length === 0) setShowJewelry(false)
       return next
     })
+  }
+
+  async function toggleShowWatches() {
+    if (!showWatches && watchItems.length === 0) {
+      const wCatEntry = Object.entries(categories).find(([, c]) => c.metalType === "WATCH")
+      const wCatId = wCatEntry?.[0] || ""
+      const num = await fetchNextCode("W")
+      setNextWatchNum(num + 1)
+      setWatchItems([{ ...newLineItem(getNextId()), category: wCatId, watchData: { ...emptyWatchData }, itemCode: `W${String(num).padStart(4, "0")}` }])
+
+    }
+    setShowWatches(!showWatches)
+  }
+
+  function addWatchRow() {
+    const wCatEntry = Object.entries(categories).find(([, c]) => c.metalType === "WATCH")
+    const wCatId = wCatEntry?.[0] || ""
+    const num = getNextCodeNum(watchItems, "W", nextWatchNum)
+    const code = `W${String(num).padStart(4, "0")}`
+    setNextWatchNum(num + 1)
+    setWatchItems(prev => [...prev, { ...newLineItem(getNextId()), category: wCatId, watchData: { ...emptyWatchData }, itemCode: code }])
+
+    setFocusWatchRow(true)
+  }
+
+  function removeWatchRow(id: number) {
+    setWatchItems(prev => {
+      const next = prev.filter(i => i.id !== id)
+      if (next.length === 0) setShowWatches(false)
+      return next
+    })
+  }
+
+  function updateWatchItem(id: number, field: keyof WatchData, value: string | boolean) {
+    setWatchItems(prev => prev.map(item => {
+      if (item.id !== id) return item
+      const wd = { ...(item.watchData || { ...emptyWatchData }), [field]: value }
+      return { ...item, watchData: wd, pricePaid: wd.totalCost, weight: "1", quantity: "1" }
+    }))
+  }
+
+  function updateWatchSubcategory(id: number, value: string) {
+    setWatchItems(prev => prev.map(item => item.id === id ? { ...item, subcategory: value } : item))
   }
 
   function updateDiamondItem(id: number, field: keyof DiamondData, value: string) {
@@ -604,7 +719,7 @@ function NewPurchaseForm() {
     })
   }, [diamondItems])
 
-  const allItems = [...lineItems, ...diamondItems, ...jewelryItems]
+  const allItems = [...lineItems, ...diamondItems, ...jewelryItems, ...watchItems]
   const grandTotal = allItems.reduce((s, i) => s + (parseFloat(i.pricePaid) || 0), 0)
   const ticketNum = parseFloat(ticketTotal) || 0
   const ticketRemaining = ticketNum - grandTotal
@@ -652,15 +767,17 @@ function NewPurchaseForm() {
           ...lineItems.filter(i => i.dbId),
           ...diamondItems.filter(i => i.dbId),
           ...jewelryItems.filter(i => i.dbId),
+          ...watchItems.filter(i => i.dbId),
         ]
         const keptDbIds = existingItems.map(i => i.dbId!).filter(Boolean)
         const removedIds = originalDbIds.filter(id => !keptDbIds.includes(id))
 
-        const isRowEmpty = (item: LineItem) => !item.weight && !item.pricePaid
+        const isRowEmpty = (item: LineItem) => !item.weight && !item.pricePaid && !(item.watchData?.totalCost)
         const allNewItems = [
           ...lineItems.filter(i => !i.dbId),
           ...(showDiamonds ? diamondItems.filter(i => !i.dbId) : []),
           ...(showJewelry ? jewelryItems.filter(i => !i.dbId) : []),
+          ...(showWatches ? watchItems.filter(i => !i.dbId) : []),
         ].filter(item => !isRowEmpty(item))
 
         // PUT existing items + remove deleted items
@@ -676,6 +793,7 @@ function NewPurchaseForm() {
               items: existingItems.map(item => {
                 const dd = item.diamondData
                 const jd = item.jewelryData
+                const wd = item.watchData
                 return {
                   id: item.dbId,
                   description: item.description,
@@ -699,6 +817,12 @@ function NewPurchaseForm() {
                     mainStone: jd.mainStone || null,
                     costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
                   }}),
+                  ...(wd && { watchData: {
+                    brand: wd.brand || null, referenceNumber: wd.referenceNumber || null,
+                    serialNumber: wd.serialNumber || null, caseMetal: wd.caseMetal || null,
+                    caseSizeMM: wd.caseSizeMM || null,
+                    box: wd.box || false, paperwork: wd.paperwork || false,
+                  }}),
                 }
               }),
             }),
@@ -711,13 +835,20 @@ function NewPurchaseForm() {
 
         // POST new items using the existing purchaseNumber and leadId
         for (const item of allNewItems) {
-          if (!item.category || !item.subcategory || !item.weight || !item.pricePaid) {
-            throw new Error("Please fill in all required fields for new items")
+          const isWatch = !!item.watchData
+          if (!item.category || (!isWatch && (!item.subcategory || !item.weight || !item.pricePaid)) || (isWatch && !item.pricePaid)) {
+            const missing = [!item.category && "category", !isWatch && !item.subcategory && "type", !isWatch && !item.weight && "weight", !item.pricePaid && "price"].filter(Boolean).join(", ")
+            throw new Error(`Please fill in all required fields for new items (missing: ${missing})`)
           }
           const cat = categories[item.category]
           let baseDesc: string
           let extras: string
-          if (item.jewelryData?.metal) {
+          if (item.watchData?.brand) {
+            const wd = item.watchData
+            const parts = [wd.brand, wd.caseMetal, wd.caseSizeMM, wd.referenceNumber, wd.description].filter(Boolean)
+            baseDesc = parts.join(" ") || "Watch"
+            extras = ""
+          } else if (item.jewelryData?.metal) {
             const jd = item.jewelryData
             const parts = [jd.metal, item.subcategory, jd.brand, jd.mainStone && jd.mainStone !== "None" && `w/ ${jd.mainStone}`].filter(Boolean)
             baseDesc = item.description || parts.join(" ")
@@ -741,10 +872,10 @@ function NewPurchaseForm() {
               leadId: selectedLeadId,
               description: fullDesc,
               metalType: cat?.metalType || "OTHER",
-              weight: item.weight,
+              weight: item.weight || (isWatch ? "1" : ""),
               weightUnit: cat?.weightUnit || "GRAM",
               purity: item.subcategory,
-              pricePaid: item.pricePaid,
+              pricePaid: item.pricePaid || (isWatch ? item.watchData?.totalCost : ""),
               pricePerUnit: item.pricePerUnit || null,
               category: cat?.label || item.category,
               subcategory: item.subcategory,
@@ -789,6 +920,23 @@ function NewPurchaseForm() {
               }),
             })
           }
+          if (item.watchData && created.inventoryItemId) {
+            const wd = item.watchData
+            await fetch("/api/watches", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                inventoryItemId: created.inventoryItemId,
+                brand: wd.brand || null,
+                referenceNumber: wd.referenceNumber || null,
+                serialNumber: wd.serialNumber || null,
+                caseMetal: wd.caseMetal || null,
+                caseSizeMM: wd.caseSizeMM || null,
+                box: wd.box || false,
+                paperwork: wd.paperwork || false,
+              }),
+            })
+          }
         }
 
         router.push(`/purchases/${redirectId || editId}`)
@@ -809,12 +957,16 @@ function NewPurchaseForm() {
       }
 
       // Filter out empty rows (no weight and no price) and validate the rest
-      const isRowFilled = (item: LineItem) => item.category && item.subcategory && item.weight && item.pricePaid
-      const isRowEmpty = (item: LineItem) => !item.weight && !item.pricePaid
+      const isRowFilled = (item: LineItem) => {
+        if (item.watchData) return item.category && item.pricePaid
+        return item.category && item.subcategory && item.weight && item.pricePaid
+      }
+      const isRowEmpty = (item: LineItem) => !item.weight && !item.pricePaid && !(item.watchData?.totalCost)
       const submitItems = [
         ...lineItems,
         ...(showDiamonds ? diamondItems : []),
         ...(showJewelry ? jewelryItems : []),
+        ...(showWatches ? watchItems : []),
       ].filter(item => !isRowEmpty(item))
       for (const item of submitItems) {
         if (!isRowFilled(item))
@@ -833,7 +985,12 @@ function NewPurchaseForm() {
         const cat = categories[item.category]
         let extras: string
         let baseDesc: string
-        if (item.jewelryData?.metal) {
+        if (item.watchData?.brand) {
+          const wd = item.watchData
+          const parts = [wd.brand, wd.caseMetal, wd.caseSizeMM, wd.referenceNumber, wd.description].filter(Boolean)
+          baseDesc = parts.join(" ") || "Watch"
+          extras = ""
+        } else if (item.jewelryData?.metal) {
           const jd = item.jewelryData
           const parts = [
             jd.metal,
@@ -931,6 +1088,25 @@ function NewPurchaseForm() {
               brand: jd.brand || null,
               mainStone: jd.mainStone || null,
               costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+            }),
+          })
+        }
+
+        // Save watch details if present
+        if (item.watchData && created.inventoryItemId) {
+          const wd = item.watchData
+          await fetch("/api/watches", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              inventoryItemId: created.inventoryItemId,
+              brand: wd.brand || null,
+              referenceNumber: wd.referenceNumber || null,
+              serialNumber: wd.serialNumber || null,
+              caseMetal: wd.caseMetal || null,
+              caseSizeMM: wd.caseSizeMM || null,
+              box: wd.box || false,
+              paperwork: wd.paperwork || false,
             }),
           })
         }
@@ -1059,6 +1235,11 @@ function NewPurchaseForm() {
               <input type="checkbox" checked={showJewelry} onChange={toggleShowJewelry}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600" />
               <span className="text-sm font-medium text-gray-700">Jewelry</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={showWatches} onChange={toggleShowWatches}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700">Watches</span>
             </label>
           </div>
 
@@ -1443,6 +1624,113 @@ function NewPurchaseForm() {
                           </td>
                           <td className="px-1 text-center align-middle w-8">
                             <button type="button" onClick={() => removeJewelryRow(item.id)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Watches Table */}
+          {showWatches && (
+            <div className="bg-white rounded-lg shadow overflow-visible relative">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-teal-50">
+                <span className="text-sm font-semibold text-gray-700">Watches</span>
+                <button type="button" onClick={addWatchRow}
+                  className="px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100">
+                  + Add Row
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>Code</th>
+                      <th className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>Type</th>
+                      {WATCH_COL_HEADERS.map(h => (
+                        <th key={h} className={`${cellClass} text-left text-xs font-semibold text-gray-500 uppercase py-2 whitespace-nowrap`}>{h}</th>
+                      ))}
+                      <th className="px-2 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody ref={watchBodyRef} className="divide-y divide-gray-100">
+                    {watchItems.map(item => {
+                      const wd = item.watchData || emptyWatchData
+                      const wCat = item.category ? categories[item.category] : null
+                      const isLastRow = item.id === watchItems[watchItems.length - 1].id
+                      return (
+                        <tr key={item.id} className="hover:bg-gray-50 group">
+                          <td className={`${cellClass} align-middle`}>
+                            <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-600">{item.itemCode}</span>
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <select value={item.subcategory}
+                              onChange={e => updateWatchSubcategory(item.id, e.target.value)}
+                              className={selectClass + " min-w-[100px]"}>
+                              <option value="">Select...</option>
+                              {wCat?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <select value={wd.brand} onChange={e => updateWatchItem(item.id, "brand", e.target.value)}
+                              className={selectClass + " min-w-[120px]"}>
+                              {WATCH_BRANDS.map(b => <option key={b} value={b}>{b || "--"}</option>)}
+                            </select>
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <select value={wd.caseMetal} onChange={e => updateWatchItem(item.id, "caseMetal", e.target.value)}
+                              className={selectClass + " min-w-[80px]"}>
+                              {WATCH_METALS.map(m => <option key={m} value={m}>{m || "--"}</option>)}
+                            </select>
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <select value={wd.caseSizeMM} onChange={e => updateWatchItem(item.id, "caseSizeMM", e.target.value)}
+                              className={selectClass + " min-w-[75px]"}>
+                              {WATCH_SIZES.map(s => <option key={s} value={s}>{s || "--"}</option>)}
+                            </select>
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <input value={wd.referenceNumber} placeholder="Ref #"
+                              onChange={e => updateWatchItem(item.id, "referenceNumber", e.target.value)}
+                              className={inputClass + " min-w-[100px]"} />
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <input value={wd.serialNumber} placeholder="Serial #"
+                              onChange={e => updateWatchItem(item.id, "serialNumber", e.target.value)}
+                              className={inputClass + " min-w-[100px]"} />
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <input value={wd.description} placeholder="Optional"
+                              onChange={e => updateWatchItem(item.id, "description", e.target.value)}
+                              className={inputClass + " min-w-[120px]"} />
+                          </td>
+                          <td className={`${cellClass} align-middle text-center`}>
+                            <input type="checkbox" checked={wd.box}
+                              onChange={e => updateWatchItem(item.id, "box", e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                          </td>
+                          <td className={`${cellClass} align-middle text-center`}>
+                            <input type="checkbox" checked={wd.paperwork}
+                              onChange={e => updateWatchItem(item.id, "paperwork", e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <div className="flex items-center gap-0.5 min-w-[90px]">
+                              <span className="text-gray-400 text-sm">$</span>
+                              <input type="number" step="0.01" value={wd.totalCost} placeholder="0.00"
+                                onChange={e => updateWatchItem(item.id, "totalCost", e.target.value)}
+                                onKeyDown={e => { arrowNav(e); if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addWatchRow() } }}
+                                className={numInputClass + " font-medium"} />
+                            </div>
+                          </td>
+                          <td className="px-1 text-center align-middle w-8">
+                            <button type="button" onClick={() => removeWatchRow(item.id)}
                               className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
                               ×
                             </button>

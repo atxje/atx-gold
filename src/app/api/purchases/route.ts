@@ -89,12 +89,13 @@ export async function POST(request: Request) {
     // Find or create InventoryItem if category+subcategory provided
     let inventoryItemId: string | null = null
     let generatedItemCode: string | null = null
-    if (category && subcategory) {
-      const isUniqueItem = metalType === "DIAMOND" || metalType === "JEWELRY"
+    const effectiveSubcategory = subcategory || (metalType === "WATCH" ? "Watch" : null)
+    if (category && effectiveSubcategory) {
+      const isUniqueItem = metalType === "DIAMOND" || metalType === "JEWELRY" || metalType === "WATCH"
 
       if (isUniqueItem) {
-        // Generate unique item code: D0001 for diamonds, J0001 for jewelry
-        const prefix = metalType === "DIAMOND" ? "D" : "J"
+        // Generate unique item code: D0001 for diamonds, J0001 for jewelry, W0001 for watches
+        const prefix = metalType === "DIAMOND" ? "D" : metalType === "WATCH" ? "W" : "J"
         const lastCoded = await prisma.inventoryItem.findFirst({
           where: { itemCode: { startsWith: prefix } },
           orderBy: { itemCode: "desc" },
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
         generatedItemCode = `${prefix}${String(nextNum).padStart(4, "0")}`
 
         // Use item code as subcategory for uniqueness
-        const itemName = `${generatedItemCode} – ${subcategory}`
+        const itemName = `${generatedItemCode} – ${effectiveSubcategory}`
         const inventoryItem = await prisma.inventoryItem.create({
           data: {
             itemCode: generatedItemCode,
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
         pricePerUnit: pricePerUnit ? parseFloat(pricePerUnit) : null,
         quantity: parsedQuantity,
         category: category || null,
-        subcategory: subcategory || null,
+        subcategory: effectiveSubcategory || null,
         inventoryItemId,
         purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
         notes,

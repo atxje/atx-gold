@@ -9,6 +9,7 @@ async function main() {
   await prisma.mixTransfer.deleteMany()
   await prisma.diamondDetails.deleteMany()
   await prisma.jewelryDetails.deleteMany()
+  await prisma.watchDetails.deleteMany()
   await prisma.purchase.deleteMany()
   await prisma.inventoryItem.deleteMany()
   await prisma.customer.deleteMany()

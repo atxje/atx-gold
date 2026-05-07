@@ -17,11 +17,19 @@ export async function GET(request: Request) {
     : new Date(Date.now() + 24 * 60 * 60 * 1000) // future date to include everything for "current"
 
   // Get all inventory items (even zeroed ones — they may have had stock at that date)
-  const items = await prisma.inventoryItem.findMany()
+  const items = await prisma.inventoryItem.findMany({
+    include: { jewelryDetails: { select: { metal: true } }, watchDetails: { select: { id: true } } },
+  })
+
+  // Build category → metalType map from StockCategory
+  const stockCategories = await prisma.stockCategory.findMany({ select: { name: true, metalType: true } })
+  const catMetalMap = new Map<string, string>()
+  for (const sc of stockCategories) catMetalMap.set(sc.name, sc.metalType)
 
   // Build a map: inventoryItemId → reconstructed state
   const state = new Map<string, {
     id: string; name: string; category: string; subcategory: string; weightUnit: string
+    metalType: string; jewelryMetal: string | null; isWatch: boolean
     totalWeight: number; availableWeight: number; totalCost: number
     soldWeight: number; soldValue: number; totalProfit: number; askingPrice: number
   }>()
@@ -30,6 +38,9 @@ export async function GET(request: Request) {
     state.set(item.id, {
       id: item.id, name: item.name, category: item.category,
       subcategory: item.subcategory, weightUnit: item.weightUnit,
+      metalType: catMetalMap.get(item.category) || "OTHER",
+      jewelryMetal: item.jewelryDetails?.metal || null,
+      isWatch: !!item.watchDetails,
       totalWeight: 0, availableWeight: 0, totalCost: 0,
       soldWeight: 0, soldValue: 0, totalProfit: 0,
       askingPrice: item.askingPrice,

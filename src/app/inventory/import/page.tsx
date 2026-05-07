@@ -39,6 +39,22 @@ const emptyJewelryData: JewelryData = {
   metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "",
 }
 
+interface WatchData {
+  brand: string; referenceNumber: string; serialNumber: string
+  caseMetal: string; caseSizeMM: string
+  description: string; totalCost: string; box: boolean; paperwork: boolean
+}
+
+const WATCH_BRANDS = ["", "Rolex", "Cartier", "Omega", "Audemars Piguet", "Patek Philippe", "Breitling", "Tag Heuer", "IWC", "Panerai", "Tudor", "Hublot", "Other"]
+const WATCH_METALS = ["", "SS", "Gold", "Platinum", "Two-Tone", "Titanium", "Ceramic"]
+const WATCH_SIZES = ["", "26mm", "28mm", "31mm", "34mm", "36mm", "38mm", "39mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm"]
+
+const emptyWatchData: WatchData = {
+  brand: "", referenceNumber: "", serialNumber: "", caseMetal: "", caseSizeMM: "", description: "", totalCost: "", box: false, paperwork: false,
+}
+
+const WATCH_COL_HEADERS = ["Brand", "Metal", "Size", "Ref #", "Serial #", "Description", "Box", "Papers", "Total Cost"]
+
 interface LineItem {
   id: number
   category: string
@@ -51,6 +67,7 @@ interface LineItem {
   lastEdited: "pricePerUnit" | "cost"
   diamondData?: DiamondData
   jewelryData?: JewelryData
+  watchData?: WatchData
   itemCode?: string
   weightUnit?: string
 }
@@ -107,6 +124,10 @@ export default function ImportStockPage() {
   const [showJewelry, setShowJewelry] = useState(false)
   const [jewelryItems, setJewelryItems] = useState<LineItem[]>([])
 
+  // Watch items
+  const [showWatches, setShowWatches] = useState(false)
+  const [watchItems, setWatchItems] = useState<LineItem[]>([])
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
   }, [status, router])
@@ -145,6 +166,7 @@ export default function ImportStockPage() {
   const regularCategories = Object.entries(categories).filter(([, c]) => c.metalType !== "DIAMOND" && c.metalType !== "JEWELRY")
   const diamondCategories = Object.entries(categories).filter(([, c]) => c.metalType === "DIAMOND")
   const jewelryCategories = Object.entries(categories).filter(([, c]) => c.metalType === "JEWELRY")
+  const watchCategories = Object.entries(categories).filter(([, c]) => c.metalType === "WATCH")
 
   function updateLineItem(items: LineItem[], setItems: (items: LineItem[]) => void, id: number, field: string, value: string) {
     setItems(items.map(item => {
@@ -295,6 +317,27 @@ export default function ImportStockPage() {
     }))
   }
 
+  // Watch-specific functions
+  function addWatchRow() {
+    const id = nextId
+    setNextId(nextId + 1)
+    const item = newLineItem(id)
+    item.watchData = { ...emptyWatchData }
+    if (watchCategories.length === 1) {
+      item.category = watchCategories[0][0]
+      item.weightUnit = watchCategories[0][1].weightUnit
+    }
+    setWatchItems([...watchItems, item])
+  }
+
+  function updateWatchField(id: number, field: string, value: string | boolean) {
+    setWatchItems(watchItems.map(item => {
+      if (item.id !== id) return item
+      const wd = { ...item.watchData!, [field]: value }
+      return { ...item, watchData: wd, cost: wd.totalCost }
+    }))
+  }
+
   async function handleSubmit() {
     setError("")
     setSuccess("")
@@ -304,6 +347,7 @@ export default function ImportStockPage() {
       category: string; subcategory: string; metalType: string; weightUnit: string
       weight: number; cost: number; quantity: number; description?: string
       diamondData?: Record<string, unknown>; jewelryData?: Record<string, unknown>
+      watchData?: Record<string, unknown>
     }[] = []
 
     // Regular items
@@ -395,6 +439,36 @@ export default function ImportStockPage() {
       })
     }
 
+    // Watch items
+    for (const item of watchItems) {
+      const wd = item.watchData!
+      const c = parseFloat(wd.totalCost) || 0
+      if (c === 0) continue
+      if (!item.subcategory) {
+        setError("All watch items need a type")
+        return
+      }
+      const catDef = item.category ? categories[item.category] : watchCategories[0]?.[1]
+      allItems.push({
+        category: catDef?.label || "Watches",
+        subcategory: item.subcategory,
+        metalType: "WATCH",
+        weightUnit: "GRAM",
+        weight: 0,
+        cost: c,
+        quantity: parseInt(item.quantity) || 0,
+        watchData: {
+          brand: wd.brand || undefined,
+          referenceNumber: wd.referenceNumber || undefined,
+          serialNumber: wd.serialNumber || undefined,
+          caseMetal: wd.caseMetal || undefined,
+          caseSizeMM: wd.caseSizeMM || undefined,
+          box: wd.box,
+          paperwork: wd.paperwork,
+        },
+      })
+    }
+
     if (allItems.length === 0) {
       setError("Add at least one item with weight or cost")
       return
@@ -419,8 +493,10 @@ export default function ImportStockPage() {
       setLineItems([newLineItem(1)])
       setDiamondItems([])
       setJewelryItems([])
+      setWatchItems([])
       setShowDiamonds(false)
       setShowJewelry(false)
+      setShowWatches(false)
       setNextId(2)
 
       setTimeout(() => router.push("/inventory"), 1500)
@@ -436,7 +512,8 @@ export default function ImportStockPage() {
   const regularTotal = lineItems.reduce((s, i) => s + (parseFloat(i.cost) || 0), 0)
   const diamondTotal = diamondItems.reduce((s, i) => s + (parseFloat(i.cost) || 0), 0)
   const jewelryTotal = jewelryItems.reduce((s, i) => s + (parseFloat(i.jewelryData?.totalPrice || "0") || 0), 0)
-  const grandTotal = regularTotal + diamondTotal + jewelryTotal
+  const watchTotal = watchItems.reduce((s, i) => s + (parseFloat(i.watchData?.totalCost || "0") || 0), 0)
+  const grandTotal = regularTotal + diamondTotal + jewelryTotal + watchTotal
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -550,6 +627,13 @@ export default function ImportStockPage() {
               if (e.target.checked && jewelryItems.length === 0) addJewelryRow()
             }} className="rounded border-gray-300" />
             Jewelry
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showWatches} onChange={e => {
+              setShowWatches(e.target.checked)
+              if (e.target.checked && watchItems.length === 0) addWatchRow()
+            }} className="rounded border-gray-300" />
+            Watches
           </label>
         </div>
 
@@ -728,6 +812,82 @@ export default function ImportStockPage() {
             </div>
             <div className="px-4 py-2 border-t border-gray-100">
               <button onClick={addJewelryRow} className="text-sm text-blue-600 hover:text-blue-800">+ Add Jewelry</button>
+            </div>
+          </div>
+        )}
+
+        {/* Watches Table */}
+        {showWatches && (
+          <div className="bg-white rounded-lg shadow mb-6">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">Watches</h2>
+              <span className="text-xs text-gray-400">
+                Total: ${watchTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider">
+                    <th className={cellClass + " w-8"}>#</th>
+                    <th className={cellClass + " text-left"}>Type</th>
+                    {WATCH_COL_HEADERS.map(h => (
+                      <th key={h} className={cellClass + " text-left"}>{h}</th>
+                    ))}
+                    <th className="w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {watchItems.map((item, idx) => {
+                    const wd = item.watchData!
+                    const catDef = item.category ? categories[item.category] : watchCategories[0]?.[1]
+                    return (
+                      <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
+                        <td className={cellClass}>
+                          <select value={item.subcategory} onChange={e => setWatchItems(watchItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
+                            <option value="">Select...</option>
+                            {catDef?.subcategories.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className={cellClass}>
+                          <select value={wd.brand} onChange={e => updateWatchField(item.id, "brand", e.target.value)} className={selectClass}>
+                            {WATCH_BRANDS.map(b => <option key={b} value={b}>{b || "–"}</option>)}
+                          </select>
+                        </td>
+                        <td className={cellClass}>
+                          <select value={wd.caseMetal} onChange={e => updateWatchField(item.id, "caseMetal", e.target.value)} className={selectClass}>
+                            {WATCH_METALS.map(m => <option key={m} value={m}>{m || "–"}</option>)}
+                          </select>
+                        </td>
+                        <td className={cellClass}>
+                          <select value={wd.caseSizeMM} onChange={e => updateWatchField(item.id, "caseSizeMM", e.target.value)} className={selectClass}>
+                            {WATCH_SIZES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
+                          </select>
+                        </td>
+                        <td className={cellClass}><input value={wd.referenceNumber} onChange={e => updateWatchField(item.id, "referenceNumber", e.target.value)} className={inputClass} placeholder="Ref #" /></td>
+                        <td className={cellClass}><input value={wd.serialNumber} onChange={e => updateWatchField(item.id, "serialNumber", e.target.value)} className={inputClass} placeholder="Serial #" /></td>
+                        <td className={cellClass}><input value={wd.description} onChange={e => updateWatchField(item.id, "description", e.target.value)} className={inputClass} placeholder="Description" /></td>
+                        <td className={cellClass + " text-center"}>
+                          <input type="checkbox" checked={wd.box} onChange={e => updateWatchField(item.id, "box", e.target.checked)} className="w-4 h-4 rounded border-gray-300" />
+                        </td>
+                        <td className={cellClass + " text-center"}>
+                          <input type="checkbox" checked={wd.paperwork} onChange={e => updateWatchField(item.id, "paperwork", e.target.checked)} className="w-4 h-4 rounded border-gray-300" />
+                        </td>
+                        <td className={cellClass}><input type="number" value={wd.totalCost} onChange={e => updateWatchField(item.id, "totalCost", e.target.value)} className={numInputClass} step="any" /></td>
+                        <td className="px-1">
+                          <button onClick={() => setWatchItems(watchItems.filter(i => i.id !== item.id))} className="text-red-400 hover:text-red-600 text-xs">×</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-2 border-t border-gray-100">
+              <button onClick={addWatchRow} className="text-sm text-blue-600 hover:text-blue-800">+ Add Watch</button>
             </div>
           </div>
         )}

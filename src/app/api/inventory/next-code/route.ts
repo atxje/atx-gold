@@ -8,8 +8,8 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const prefix = searchParams.get("prefix")
-  if (!prefix || !["D", "J"].includes(prefix)) {
-    return NextResponse.json({ error: "prefix must be D or J" }, { status: 400 })
+  if (!prefix || !["D", "J", "W"].includes(prefix)) {
+    return NextResponse.json({ error: "prefix must be D, J, or W" }, { status: 400 })
   }
 
   const last = await prisma.inventoryItem.findFirst({

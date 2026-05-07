@@ -151,6 +151,7 @@ enum MetalType {
   PALLADIUM
   DIAMOND
   JEWELRY
+  WATCH
   OTHER
 }
 
@@ -188,6 +189,7 @@ model InventoryItem {
   mixTransferItems MixTransferItem[]
   diamondDetails   DiamondDetails?
   jewelryDetails   JewelryDetails?
+  watchDetails     WatchDetails?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -227,6 +229,23 @@ model JewelryDetails {
   brand           String? // T&Co, DY, JA, Cartier, VCA, Other
   mainStone       String? // Diamond, Sapphire, Ruby, Tanzanite, Topaz, Other, None
   costPerGram     Float?
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WatchDetails {
+  id              String  @id @default(cuid())
+  inventoryItemId String  @unique
+  brand           String? // Rolex, Cartier, Omega, AP, Patek, etc.
+  referenceNumber String?
+  serialNumber    String?
+  caseMetal       String? // SS, Gold, Platinum
+  caseSizeMM      String? // 26mm, 36mm, 40mm, etc.
+  box             Boolean @default(false)
+  paperwork       Boolean @default(false)
 
   inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 

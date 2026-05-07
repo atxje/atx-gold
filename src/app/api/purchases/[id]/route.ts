@@ -16,7 +16,7 @@ export async function GET(
     include: {
       lead: { select: { id: true, name: true, phone: true, email: true } },
       user: { select: { id: true, name: true, email: true } },
-      inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } },
+      inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } },
     },
   })
 
@@ -26,7 +26,7 @@ export async function GET(
   if (purchase.purchaseNumber) {
     items = await prisma.purchase.findMany({
       where: { purchaseNumber: purchase.purchaseNumber },
-      include: { inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } } },
+      include: { inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } } },
       orderBy: { createdAt: "asc" },
     }) as typeof items
   }
@@ -129,6 +129,15 @@ export async function PUT(
         create: { inventoryItemId: existing.inventoryItemId, ...item.jewelryData },
       })
     }
+
+    // Update watch details if present
+    if (item.watchData && existing.inventoryItemId) {
+      await prisma.watchDetails.upsert({
+        where: { inventoryItemId: existing.inventoryItemId },
+        update: item.watchData,
+        create: { inventoryItemId: existing.inventoryItemId, ...item.watchData },
+      })
+    }
   }
 
   // Re-fetch the full document to return — if the original id was deleted, find a surviving sibling
@@ -136,7 +145,7 @@ export async function PUT(
     where: { id },
     include: {
       lead: { select: { id: true, name: true, phone: true, email: true } },
-      inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } },
+      inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } },
     },
   })
   if (!purchase && purchaseNumber) {
@@ -144,7 +153,7 @@ export async function PUT(
       where: { purchaseNumber },
       include: {
         lead: { select: { id: true, name: true, phone: true, email: true } },
-        inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } },
+        inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } },
       },
     })
   }
@@ -153,7 +162,7 @@ export async function PUT(
   const allItems = purchase.purchaseNumber
     ? await prisma.purchase.findMany({
         where: { purchaseNumber: purchase.purchaseNumber },
-        include: { inventoryItem: { include: { diamondDetails: true, jewelryDetails: true } } },
+        include: { inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } } },
         orderBy: { createdAt: "asc" },
       })
     : [purchase]

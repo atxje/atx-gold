@@ -15,6 +15,7 @@ export async function GET() {
       },
       diamondDetails: true,
       jewelryDetails: true,
+      watchDetails: true,
     },
     orderBy: { updatedAt: "desc" },
   })

@@ -20,13 +20,13 @@ interface Category {
   subcategories: Subcategory[]
 }
 
-const metalTypes = ["GOLD", "SILVER", "PLATINUM", "PALLADIUM", "DIAMOND", "OTHER"]
+const metalTypes = ["GOLD", "SILVER", "PLATINUM", "PALLADIUM", "DIAMOND", "JEWELRY", "WATCH", "OTHER"]
 const weightUnits = [
   { value: "GRAM", label: "Grams (g)" },
   { value: "TROY_OZ", label: "Troy Oz (oz)" },
   { value: "CARAT", label: "Carats (ct)" },
 ]
-const metalLabels: Record<string, string> = { GOLD: "Gold", SILVER: "Silver", PLATINUM: "Platinum", PALLADIUM: "Palladium", DIAMOND: "Diamond", OTHER: "Other" }
+const metalLabels: Record<string, string> = { GOLD: "Gold", SILVER: "Silver", PLATINUM: "Platinum", PALLADIUM: "Palladium", DIAMOND: "Diamond", JEWELRY: "Jewelry", WATCH: "Watch", OTHER: "Other" }
 const unitLabels: Record<string, string> = { GRAM: "g", TROY_OZ: "oz", CARAT: "ct" }
 
 export default function CategoriesPage() {

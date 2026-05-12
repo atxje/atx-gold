@@ -836,8 +836,10 @@ function NewPurchaseForm() {
         // POST new items using the existing purchaseNumber and leadId
         for (const item of allNewItems) {
           const isWatch = !!item.watchData
-          if (!item.category || (!isWatch && (!item.subcategory || !item.weight || !item.pricePaid)) || (isWatch && !item.pricePaid)) {
-            const missing = [!item.category && "category", !isWatch && !item.subcategory && "type", !isWatch && !item.weight && "weight", !item.pricePaid && "price"].filter(Boolean).join(", ")
+          const editCat = item.category ? categories[item.category] : null
+          const editNeedsSub = editCat ? editCat.subcategories.length > 0 : true
+          if (!item.category || (!isWatch && ((!item.subcategory && editNeedsSub) || !item.weight || !item.pricePaid)) || (isWatch && !item.pricePaid)) {
+            const missing = [!item.category && "category", !isWatch && !item.subcategory && editNeedsSub && "type", !isWatch && !item.weight && "weight", !item.pricePaid && "price"].filter(Boolean).join(", ")
             throw new Error(`Please fill in all required fields for new items (missing: ${missing})`)
           }
           const cat = categories[item.category]
@@ -959,7 +961,9 @@ function NewPurchaseForm() {
       // Filter out empty rows (no weight and no price) and validate the rest
       const isRowFilled = (item: LineItem) => {
         if (item.watchData) return item.category && item.pricePaid
-        return item.category && item.subcategory && item.weight && item.pricePaid
+        const cat = item.category ? categories[item.category] : null
+        const needsSub = cat ? cat.subcategories.length > 0 : true
+        return item.category && (!needsSub || item.subcategory) && item.weight && item.pricePaid
       }
       const isRowEmpty = (item: LineItem) => !item.weight && !item.pricePaid && !(item.watchData?.totalCost)
       const submitItems = [

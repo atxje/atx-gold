@@ -734,45 +734,320 @@ export default function InventoryPage() {
                 other: "Other",
               }
 
-              return typeGroups.map(({ type, groups }) => {
-                const allItemsInType = groups.flatMap(g => g.items)
-                const hasMelt = type === "metal" || type === "jewelry"
-                return (
-                  <div key={type} className="bg-white rounded-lg shadow overflow-x-auto">
-                    <div className="px-4 py-2 bg-gray-800 text-white text-sm font-semibold">
-                      {typeLabels[type]} <span className="text-xs font-normal text-gray-300">({allItemsInType.length})</span>
+              // Metal + Jewelry combined table for column alignment
+              // With spot: 14 cols. Without spot: 13 cols (metal gets spacer).
+              // Left 7: cb, item, qty, c4, c5, c6, c7
+              // Right from Cost: cost, [melt], c_pu1, c_pu2, rev, prof, stat
+              const metalJewelryGroups = [
+                ...(typeGroupsMap.get("metal") || []).map(g => ({ ...g, secType: "metal" as const })),
+                ...(typeGroupsMap.get("jewelry") || []).map(g => ({ ...g, secType: "jewelry" as const })),
+              ]
+
+              // Watch + Diamond combined table for column alignment
+              const watchDiamondGroups = [
+                ...(typeGroupsMap.get("watch") || []).map(g => ({ ...g, secType: "watch" as const })),
+                ...(typeGroupsMap.get("diamond") || []).map(g => ({ ...g, secType: "diamond" as const })),
+              ]
+
+              return (
+                <>
+                  {/* Other — standalone table */}
+                  {typeGroups.filter(({ type }) => type === "other").map(({ type, groups }) => {
+                    const allItemsInType = groups.flatMap(g => g.items)
+                    return (
+                      <div key={type} className="bg-white rounded-lg shadow overflow-x-auto">
+                        <div className="px-4 py-2 bg-gray-800 text-white text-sm font-semibold">
+                          {typeLabels[type]} <span className="text-xs font-normal text-gray-300">({allItemsInType.length})</span>
+                        </div>
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            {renderHeader(type, allItemsInType)}
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {groups.map(({ category, items: grpItems }) => {
+                              const grpCost = grpItems.reduce((s, i) => s + i.totalCost, 0)
+                              return (
+                                <React.Fragment key={category}>
+                                  <tr className="bg-gray-100">
+                                    <td className="px-4 py-1.5 text-xs font-semibold text-gray-700 uppercase tracking-wide" colSpan={20}>
+                                      {category} <span className="text-gray-500 normal-case font-normal">({grpItems.length})</span>
+                                    </td>
+                                  </tr>
+                                  {grpItems.map(item => renderItemRow(type, item))}
+                                  <tr className="bg-gray-50 font-semibold text-sm">
+                                    <td className="px-4 py-2" colSpan={4}>Subtotal</td>
+                                    <td className="px-4 py-2 text-right text-orange-600">${fmtMoney(grpCost)}</td>
+                                    <td colSpan={10} />
+                                  </tr>
+                                </React.Fragment>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  })}
+
+                  {/* Metal + Jewelry — combined single table for aligned columns */}
+                  {metalJewelryGroups.length > 0 && (
+                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                      <div className="px-4 py-2 bg-gray-800 text-white text-sm font-semibold">
+                        Metals & Jewelry <span className="text-xs font-normal text-gray-300">({metalJewelryGroups.reduce((s, g) => s + g.items.length, 0)})</span>
+                      </div>
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-200">
+                          {metalJewelryGroups.map(({ category, items: grpItems, secType }) => {
+                            const grpCost = grpItems.reduce((s, i) => s + i.totalCost, 0)
+                            const grpMelt = spotPrices ? grpItems.reduce((s, i) => s + (meltValue(i) || 0), 0) : 0
+                            const sectionCheckbox = (
+                              <input type="checkbox"
+                                checked={grpItems.length > 0 && grpItems.every(i => selected.has(i.id))}
+                                onChange={() => {
+                                  const allSel = grpItems.every(i => selected.has(i.id))
+                                  setSelected(prev => { const n = new Set(prev); grpItems.forEach(i => allSel ? n.delete(i.id) : n.add(i.id)); return n })
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                            )
+                            return (
+                              <React.Fragment key={category}>
+                                {/* Category name */}
+                                <tr className="bg-gray-100">
+                                  <td className="px-4 py-1.5 text-xs font-semibold text-gray-700 uppercase tracking-wide" colSpan={20}>
+                                    {category} <span className="text-gray-500 normal-case font-normal">({grpItems.length})</span>
+                                  </td>
+                                </tr>
+                                {/* Column headers per section type */}
+                                {secType === "metal" ? (
+                                  <tr className="bg-gray-50">
+                                    <th className="px-4 py-2 w-8">{sectionCheckbox}</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Office</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Memo</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Avg/Unit</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                                    {spotPrices && <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">{spotPrices ? "Melt/Unit" : ""}</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Sold</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                  </tr>
+                                ) : (
+                                  <tr className="bg-gray-50">
+                                    <th className="px-4 py-2 w-8">{sectionCheckbox}</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Metal</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Stone</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                                    {spotPrices && <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Melt</th>}
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">$/g</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask/g</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                  </tr>
+                                )}
+                                {/* Item rows */}
+                                {grpItems.map(item => {
+                                  const unit = unitLabels[item.weightUnit] || "g"
+                                  const currentWeight = item.totalWeight - item.soldWeight
+                                  const onMemo = item.totalWeight - item.availableWeight - item.soldWeight
+
+                                  if (secType === "metal") {
+                                    const avgPerUnit = currentWeight > 0 ? item.totalCost / currentWeight : 0
+                                    const melt = meltValue(item)
+                                    return (
+                                      <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                                        <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                                        <td className="px-4 py-2">{itemLink(item)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-700">{currentWeight.toFixed(3)}{unit}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-medium text-gray-900">{item.availableWeight.toFixed(3)}{unit}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-amber-600">{onMemo > 0.0005 ? `${onMemo.toFixed(3)}${unit}` : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">${avgPerUnit.toFixed(2)}/{unit}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                                        {spotPrices && <td className="px-4 py-2 text-right text-sm font-medium text-amber-700">{melt !== null ? `$${fmtMoney(melt)}` : "—"}</td>}
+                                        <td className="px-4 py-2 text-right text-sm font-medium text-amber-700">{spotPrices && melt !== null && currentWeight > 0 ? `$${(melt / currentWeight).toFixed(2)}/${unit}` : ""}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{item.soldWeight > 0 ? `${item.soldWeight.toFixed(3)}${unit}` : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                                        <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                                      </tr>
+                                    )
+                                  } else {
+                                    const jd = item.jewelryDetails
+                                    const costPerG = currentWeight > 0 ? item.totalCost / currentWeight : (jd?.costPerGram || 0)
+                                    const melt = meltValue(item)
+                                    return (
+                                      <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                                        <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                                        <td className="px-4 py-2">{itemLink(item)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{jd?.metal || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{jd?.brand || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{jd?.mainStone || "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-medium text-gray-900">{currentWeight.toFixed(2)}g</td>
+                                        <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                                        {spotPrices && <td className="px-4 py-2 text-right text-sm font-medium text-amber-700">{melt !== null ? `$${fmtMoney(melt)}` : "—"}</td>}
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">${costPerG.toFixed(2)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{askCell(item, "g")}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                                        <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                                      </tr>
+                                    )
+                                  }
+                                })}
+                                {/* Subtotal */}
+                                <tr className="bg-gray-50 font-semibold text-sm">
+                                  <td className="px-4 py-2" colSpan={7}>Subtotal</td>
+                                  <td className="px-4 py-2 text-right text-orange-600">${fmtMoney(grpCost)}</td>
+                                  {spotPrices && <td className="px-4 py-2 text-right text-amber-700">${fmtMoney(grpMelt)}</td>}
+                                  <td colSpan={10} />
+                                </tr>
+                              </React.Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        {renderHeader(type, allItemsInType)}
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {groups.map(({ category, items: grpItems }) => {
-                          const grpCost = grpItems.reduce((s, i) => s + i.totalCost, 0)
-                          const grpMelt = spotPrices ? grpItems.reduce((s, i) => s + (meltValue(i) || 0), 0) : 0
-                          const subtotalColSpan = type === "metal" ? 7 : type === "jewelry" ? 7 : type === "watch" ? 10 : type === "diamond" ? 9 : 4
-                          return (
-                            <React.Fragment key={category}>
-                              <tr className="bg-gray-100">
-                                <td className="px-4 py-1.5 text-xs font-semibold text-gray-700 uppercase tracking-wide" colSpan={20}>
-                                  {category} <span className="text-gray-500 normal-case font-normal">({grpItems.length})</span>
-                                </td>
-                              </tr>
-                              {grpItems.map(item => renderItemRow(type, item))}
-                              <tr className="bg-gray-50 font-semibold text-sm">
-                                <td className="px-4 py-2" colSpan={subtotalColSpan}>Subtotal</td>
-                                <td className="px-4 py-2 text-right text-orange-600">${fmtMoney(grpCost)}</td>
-                                {hasMelt && spotPrices && <td className="px-4 py-2 text-right text-amber-700">${fmtMoney(grpMelt)}</td>}
-                                <td colSpan={10} />
-                              </tr>
-                            </React.Fragment>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })
+                  )}
+
+                  {/* Watch + Diamond — combined single table for aligned columns */}
+                  {watchDiamondGroups.length > 0 && (
+                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                      <div className="px-4 py-2 bg-gray-800 text-white text-sm font-semibold">
+                        Watches & Diamonds <span className="text-xs font-normal text-gray-300">({watchDiamondGroups.reduce((s, g) => s + g.items.length, 0)})</span>
+                      </div>
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-200">
+                          {watchDiamondGroups.map(({ category, items: grpItems, secType }) => {
+                            const grpCost = grpItems.reduce((s, i) => s + i.totalCost, 0)
+                            const sectionCheckbox = (
+                              <input type="checkbox"
+                                checked={grpItems.length > 0 && grpItems.every(i => selected.has(i.id))}
+                                onChange={() => {
+                                  const allSel = grpItems.every(i => selected.has(i.id))
+                                  setSelected(prev => { const n = new Set(prev); grpItems.forEach(i => allSel ? n.delete(i.id) : n.add(i.id)); return n })
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                            )
+                            return (
+                              <React.Fragment key={category}>
+                                {/* Category name */}
+                                <tr className="bg-gray-100">
+                                  <td className="px-4 py-1.5 text-xs font-semibold text-gray-700 uppercase tracking-wide" colSpan={16}>
+                                    {category} <span className="text-gray-500 normal-case font-normal">({grpItems.length})</span>
+                                  </td>
+                                </tr>
+                                {/* Column headers per section type */}
+                                {secType === "watch" ? (
+                                  <tr className="bg-gray-50">
+                                    <th className="px-4 py-2 w-8">{sectionCheckbox}</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Metal</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ref #</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Serial #</th>
+                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Box</th>
+                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Papers</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask</th>
+                                    <th className="px-4 py-2" />
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                  </tr>
+                                ) : (
+                                  <tr className="bg-gray-50">
+                                    <th className="px-4 py-2 w-8">{sectionCheckbox}</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Shape</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ct</th>
+                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Color</th>
+                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Clarity</th>
+                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cut</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase" colSpan={2}>Lab / Cert</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">$/ct</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ask/ct</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+                                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                  </tr>
+                                )}
+                                {/* Item rows */}
+                                {grpItems.map(item => {
+                                  if (secType === "watch") {
+                                    const wd = item.watchDetails
+                                    return (
+                                      <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                                        <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                                        <td className="px-4 py-2">{itemLink(item)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{wd?.brand || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{wd?.caseMetal || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{wd?.caseSizeMM || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{wd?.referenceNumber || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{wd?.serialNumber || "—"}</td>
+                                        <td className="px-3 py-2 text-center text-sm text-gray-700">{wd?.box ? "Yes" : "—"}</td>
+                                        <td className="px-3 py-2 text-center text-sm text-gray-700">{wd?.paperwork ? "Yes" : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{askCell(item, "ea")}</td>
+                                        <td className="px-4 py-2" />
+                                        <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                                        <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                                      </tr>
+                                    )
+                                  } else {
+                                    const dd = item.diamondDetails
+                                    const currentWeight = item.totalWeight - item.soldWeight
+                                    const costPerCt = currentWeight > 0 ? item.totalCost / currentWeight : (dd?.costPerCarat || 0)
+                                    return (
+                                      <tr key={item.id} className={`hover:bg-gray-50 ${selected.has(item.id) ? "bg-blue-50" : ""}`}>
+                                        <td className="px-4 py-2 w-8">{itemCheckbox(item)}</td>
+                                        <td className="px-4 py-2">{itemLink(item)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{item.quantity > 0 ? item.quantity : "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-700">{dd?.shape || "—"}</td>
+                                        <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">{dd?.caratWeight ? dd.caratWeight.toFixed(2) : currentWeight.toFixed(2)}</td>
+                                        <td className="px-3 py-2 text-center text-sm text-gray-700">{dd?.color || "—"}</td>
+                                        <td className="px-3 py-2 text-center text-sm text-gray-700">{dd?.clarity || "—"}</td>
+                                        <td className="px-3 py-2 text-center text-sm text-gray-700">{dd?.cutGrade || "—"}</td>
+                                        <td className="px-3 py-2 text-sm text-gray-600" colSpan={2}>{dd?.lab && dd.certNumber ? <span>{dd.lab} <span className="text-gray-400">{dd.certNumber}</span></span> : dd?.lab || "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-orange-600 font-medium">${fmtMoney(item.totalCost)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">${costPerCt.toFixed(2)}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-gray-500">{askCell(item, "ct")}</td>
+                                        <td className="px-4 py-2 text-right text-sm text-blue-600 font-medium">{item.soldValue > 0 ? `$${fmtMoney(item.soldValue)}` : "—"}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-semibold">{profitCell(item)}</td>
+                                        <td className="px-4 py-2 text-center">{statusBtn(item)}</td>
+                                      </tr>
+                                    )
+                                  }
+                                })}
+                                {/* Subtotal */}
+                                <tr className="bg-gray-50 font-semibold text-sm">
+                                  <td className="px-4 py-2" colSpan={10}>Subtotal</td>
+                                  <td className="px-4 py-2 text-right text-orange-600">${fmtMoney(grpCost)}</td>
+                                  <td colSpan={5} />
+                                </tr>
+                              </React.Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )
             })()}
 
             {/* Grand total */}

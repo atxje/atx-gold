@@ -663,6 +663,7 @@ export default function ImportStockPage() {
                   {diamondItems.map((item, idx) => {
                     const dd = item.diamondData!
                     const catDef = item.category ? categories[item.category] : diamondCategories[0]?.[1]
+                    const isLastRow = item.id === diamondItems[diamondItems.length - 1].id
                     return (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
@@ -721,7 +722,7 @@ export default function ImportStockPage() {
                         </td>
                         <td className={cellClass}><input type="number" value={dd.costPerCarat} onChange={e => updateDiamondField(item.id, "costPerCarat", e.target.value)} className={numInputClass} step="any" /></td>
                         <td className={cellClass}><input type="number" value={dd.rapDiscount} onChange={e => updateDiamondField(item.id, "rapDiscount", e.target.value)} className={numInputClass} step="any" placeholder="%" /></td>
-                        <td className={cellClass}><input type="number" value={item.cost} onChange={e => setDiamondItems(diamondItems.map(i => i.id === item.id ? { ...i, cost: e.target.value } : i))} className={numInputClass} step="any" /></td>
+                        <td className={cellClass}><input type="number" value={item.cost} onChange={e => setDiamondItems(diamondItems.map(i => i.id === item.id ? { ...i, cost: e.target.value } : i))} onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addDiamondRow() } }} className={numInputClass} step="any" /></td>
                         <td className={cellClass}>
                           <button
                             onClick={() => fetchGIA(item.id)}
@@ -771,6 +772,7 @@ export default function ImportStockPage() {
                   {jewelryItems.map((item, idx) => {
                     const jd = item.jewelryData!
                     const catDef = item.category ? categories[item.category] : jewelryCategories[0]?.[1]
+                    const isLastRow = item.id === jewelryItems[jewelryItems.length - 1].id
                     return (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
@@ -800,7 +802,7 @@ export default function ImportStockPage() {
                         </td>
                         <td className={cellClass}><input type="number" value={jd.weight} onChange={e => updateJewelryField(item.id, "weight", e.target.value)} className={numInputClass} step="any" /></td>
                         <td className={cellClass}><input type="number" value={jd.costPerGram} onChange={e => updateJewelryField(item.id, "costPerGram", e.target.value)} className={numInputClass} step="any" /></td>
-                        <td className={cellClass}><input type="number" value={jd.totalPrice} onChange={e => updateJewelryField(item.id, "totalPrice", e.target.value)} className={numInputClass} step="any" /></td>
+                        <td className={cellClass}><input type="number" value={jd.totalPrice} onChange={e => updateJewelryField(item.id, "totalPrice", e.target.value)} onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addJewelryRow() } }} className={numInputClass} step="any" /></td>
                         <td className="px-1">
                           <button onClick={() => setJewelryItems(jewelryItems.filter(i => i.id !== item.id))} className="text-red-400 hover:text-red-600 text-xs">×</button>
                         </td>
@@ -841,6 +843,7 @@ export default function ImportStockPage() {
                   {watchItems.map((item, idx) => {
                     const wd = item.watchData!
                     const catDef = item.category ? categories[item.category] : watchCategories[0]?.[1]
+                    const isLastRow = item.id === watchItems[watchItems.length - 1].id
                     return (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
@@ -876,7 +879,7 @@ export default function ImportStockPage() {
                         <td className={cellClass + " text-center"}>
                           <input type="checkbox" checked={wd.paperwork} onChange={e => updateWatchField(item.id, "paperwork", e.target.checked)} className="w-4 h-4 rounded border-gray-300" />
                         </td>
-                        <td className={cellClass}><input type="number" value={wd.totalCost} onChange={e => updateWatchField(item.id, "totalCost", e.target.value)} className={numInputClass} step="any" /></td>
+                        <td className={cellClass}><input type="number" value={wd.totalCost} onChange={e => updateWatchField(item.id, "totalCost", e.target.value)} onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addWatchRow() } }} className={numInputClass} step="any" /></td>
                         <td className="px-1">
                           <button onClick={() => setWatchItems(watchItems.filter(i => i.id !== item.id))} className="text-red-400 hover:text-red-600 text-xs">×</button>
                         </td>

@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     select: { itemCode: true },
   })
 
-  const nextNum = last?.itemCode ? parseInt(last.itemCode.slice(1)) + 1 : 1
+  const nextNum = last?.itemCode ? parseInt(last.itemCode.slice(1)) + 1 : 1000
 
   return NextResponse.json({ nextNum })
 }

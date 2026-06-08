@@ -119,14 +119,28 @@ export default function ImportStockPage() {
   const [showDiamonds, setShowDiamonds] = useState(false)
   const [diamondItems, setDiamondItems] = useState<LineItem[]>([])
   const [giaLoading, setGiaLoading] = useState<Record<number, boolean>>({})
+  const [nextDiamondNum, setNextDiamondNum] = useState<number | null>(null)
 
   // Jewelry items
   const [showJewelry, setShowJewelry] = useState(false)
   const [jewelryItems, setJewelryItems] = useState<LineItem[]>([])
+  const [nextJewelryNum, setNextJewelryNum] = useState<number | null>(null)
 
   // Watch items
   const [showWatches, setShowWatches] = useState(false)
   const [watchItems, setWatchItems] = useState<LineItem[]>([])
+  const [nextWatchNum, setNextWatchNum] = useState<number | null>(null)
+
+  async function fetchNextCode(prefix: "D" | "J" | "W"): Promise<number> {
+    const res = await fetch(`/api/inventory/next-code?prefix=${prefix}`)
+    if (!res.ok) return 1000
+    const data = await res.json()
+    return data.nextNum ?? 1000
+  }
+
+  function codeStr(prefix: string, num: number): string {
+    return `${prefix}${String(num).padStart(4, "0")}`
+  }
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -220,7 +234,7 @@ export default function ImportStockPage() {
   }
 
   // Diamond-specific functions
-  function addDiamondRow() {
+  async function addDiamondRow() {
     const id = nextId
     setNextId(nextId + 1)
     const item = newLineItem(id)
@@ -229,6 +243,10 @@ export default function ImportStockPage() {
       item.category = diamondCategories[0][0]
       item.weightUnit = diamondCategories[0][1].weightUnit
     }
+    let num = nextDiamondNum
+    if (num === null) num = await fetchNextCode("D")
+    item.itemCode = codeStr("D", num)
+    setNextDiamondNum(num + 1)
     setDiamondItems([...diamondItems, item])
   }
 
@@ -284,7 +302,7 @@ export default function ImportStockPage() {
   }
 
   // Jewelry-specific functions
-  function addJewelryRow() {
+  async function addJewelryRow() {
     const id = nextId
     setNextId(nextId + 1)
     const item = newLineItem(id)
@@ -293,6 +311,10 @@ export default function ImportStockPage() {
       item.category = jewelryCategories[0][0]
       item.weightUnit = jewelryCategories[0][1].weightUnit
     }
+    let num = nextJewelryNum
+    if (num === null) num = await fetchNextCode("J")
+    item.itemCode = codeStr("J", num)
+    setNextJewelryNum(num + 1)
     setJewelryItems([...jewelryItems, item])
   }
 
@@ -318,7 +340,7 @@ export default function ImportStockPage() {
   }
 
   // Watch-specific functions
-  function addWatchRow() {
+  async function addWatchRow() {
     const id = nextId
     setNextId(nextId + 1)
     const item = newLineItem(id)
@@ -327,6 +349,10 @@ export default function ImportStockPage() {
       item.category = watchCategories[0][0]
       item.weightUnit = watchCategories[0][1].weightUnit
     }
+    let num = nextWatchNum
+    if (num === null) num = await fetchNextCode("W")
+    item.itemCode = codeStr("W", num)
+    setNextWatchNum(num + 1)
     setWatchItems([...watchItems, item])
   }
 
@@ -653,6 +679,7 @@ export default function ImportStockPage() {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider">
                     <th className={cellClass + " w-8"}>#</th>
+                    <th className={cellClass + " text-left"}>Code</th>
                     <th className={cellClass + " text-left"}>Type</th>
                     {DIAMOND_COL_HEADERS.map(h => (
                       <th key={h} className={cellClass + " text-left"}>{h}</th>
@@ -669,6 +696,7 @@ export default function ImportStockPage() {
                     return (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
+                        <td className={cellClass + " text-xs font-mono font-semibold text-amber-600"}>{item.itemCode}</td>
                         <td className={cellClass}>
                           <select value={item.subcategory} onChange={e => setDiamondItems(diamondItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
                             <option value="">Select...</option>
@@ -763,6 +791,7 @@ export default function ImportStockPage() {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider">
                     <th className={cellClass + " w-8"}>#</th>
+                    <th className={cellClass + " text-left"}>Code</th>
                     <th className={cellClass + " text-left"}>Type</th>
                     {JEWELRY_COL_HEADERS.map(h => (
                       <th key={h} className={cellClass + " text-left"}>{h}</th>
@@ -778,6 +807,7 @@ export default function ImportStockPage() {
                     return (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
+                        <td className={cellClass + " text-xs font-mono font-semibold text-amber-600"}>{item.itemCode}</td>
                         <td className={cellClass}>
                           <select value={item.subcategory} onChange={e => setJewelryItems(jewelryItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
                             <option value="">Select...</option>
@@ -835,6 +865,7 @@ export default function ImportStockPage() {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider">
                     <th className={cellClass + " w-8"}>#</th>
+                    <th className={cellClass + " text-left"}>Code</th>
                     <th className={cellClass + " text-left"}>Type</th>
                     {WATCH_COL_HEADERS.map(h => (
                       <th key={h} className={cellClass + " text-left"}>{h}</th>
@@ -850,6 +881,7 @@ export default function ImportStockPage() {
                     return (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
+                        <td className={cellClass + " text-xs font-mono font-semibold text-amber-600"}>{item.itemCode}</td>
                         <td className={cellClass}>
                           <select value={item.subcategory} onChange={e => setWatchItems(watchItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
                             <option value="">Select...</option>

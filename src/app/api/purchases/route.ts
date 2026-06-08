@@ -103,7 +103,7 @@ export async function POST(request: Request) {
         })
         const nextNum = lastCoded?.itemCode
           ? parseInt(lastCoded.itemCode.slice(1)) + 1
-          : 1
+          : 1000
         generatedItemCode = `${prefix}${String(nextNum).padStart(4, "0")}`
 
         // Use item code as subcategory for uniqueness

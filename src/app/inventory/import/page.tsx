@@ -28,7 +28,7 @@ const emptyDiamondData: DiamondData = {
 
 interface JewelryData {
   metal: string; brand: string; mainStone: string
-  weight: string; costPerGram: string; totalPrice: string
+  weight: string; costPerGram: string; totalPrice: string; description: string
 }
 
 const JEWELRY_METALS = ["Sterling", "10K", "14K", "18K", "Plat"]
@@ -36,7 +36,7 @@ const JEWELRY_BRANDS = ["", "T&Co", "DY", "JA", "Cartier", "VCA", "Other"]
 const JEWELRY_STONES = ["", "None", "Diamond", "Sapphire", "Ruby", "Tanzanite", "Topaz", "Other"]
 
 const emptyJewelryData: JewelryData = {
-  metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "",
+  metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "", description: "",
 }
 
 interface WatchData {
@@ -97,7 +97,7 @@ const DIAMOND_COL_HEADERS = [
 ]
 
 const JEWELRY_COL_HEADERS = [
-  "Metal", "Brand", "Main Stone", "Weight (g)", "$/g", "Total",
+  "Metal", "Brand", "Main Stone", "Description", "Weight (g)", "$/g", "Total",
 ]
 
 export default function ImportStockPage() {
@@ -435,6 +435,7 @@ export default function ImportStockPage() {
           brand: jd.brand || undefined,
           mainStone: jd.mainStone || undefined,
           costPerGram: parseFloat(jd.costPerGram) || undefined,
+          description: jd.description || undefined,
         },
       })
     }
@@ -465,6 +466,7 @@ export default function ImportStockPage() {
           caseSizeMM: wd.caseSizeMM || undefined,
           box: wd.box,
           paperwork: wd.paperwork,
+          description: wd.description || undefined,
         },
       })
     }
@@ -800,6 +802,7 @@ export default function ImportStockPage() {
                             {JEWELRY_STONES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
                           </select>
                         </td>
+                        <td className={cellClass}><input value={jd.description} onChange={e => updateJewelryField(item.id, "description", e.target.value)} className={inputClass} placeholder="Description" /></td>
                         <td className={cellClass}><input type="number" value={jd.weight} onChange={e => updateJewelryField(item.id, "weight", e.target.value)} className={numInputClass} step="any" /></td>
                         <td className={cellClass}><input type="number" value={jd.costPerGram} onChange={e => updateJewelryField(item.id, "costPerGram", e.target.value)} className={numInputClass} step="any" /></td>
                         <td className={cellClass}><input type="number" value={jd.totalPrice} onChange={e => updateJewelryField(item.id, "totalPrice", e.target.value)} onKeyDown={e => { if (e.key === "Tab" && !e.shiftKey && isLastRow) { e.preventDefault(); addJewelryRow() } }} className={numInputClass} step="any" /></td>

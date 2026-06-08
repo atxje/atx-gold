@@ -38,12 +38,12 @@ export async function POST(request: Request) {
           costPerCarat?: number; rapPrice?: number; rapDiscount?: number; notes?: string
         }
         jewelryData?: {
-          metal?: string; brand?: string; mainStone?: string; costPerGram?: number
+          metal?: string; brand?: string; mainStone?: string; costPerGram?: number; description?: string
         }
         watchData?: {
           brand?: string; referenceNumber?: string; serialNumber?: string
           caseMetal?: string; caseSizeMM?: string
-          box?: boolean; paperwork?: boolean
+          box?: boolean; paperwork?: boolean; description?: string
         }
       }[]
     }
@@ -122,6 +122,7 @@ export async function POST(request: Request) {
               brand: jd.brand || null,
               mainStone: jd.mainStone || null,
               costPerGram: jd.costPerGram || null,
+              description: jd.description || null,
             },
           })
         } else if (metalType === "WATCH" && item.watchData) {
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
               caseSizeMM: wd.caseSizeMM || null,
               box: wd.box || false,
               paperwork: wd.paperwork || false,
+              description: wd.description || null,
             },
           })
         }

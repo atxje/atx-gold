@@ -229,6 +229,7 @@ model JewelryDetails {
   brand           String? // T&Co, DY, JA, Cartier, VCA, Other
   mainStone       String? // Diamond, Sapphire, Ruby, Tanzanite, Topaz, Other, None
   costPerGram     Float?
+  description     String?
 
   inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
@@ -246,6 +247,7 @@ model WatchDetails {
   caseSizeMM      String? // 26mm, 36mm, 40mm, etc.
   box             Boolean @default(false)
   paperwork       Boolean @default(false)
+  description     String?
 
   inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 

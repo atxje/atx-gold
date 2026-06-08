@@ -44,6 +44,7 @@ interface JewelryData {
   weight: string
   costPerGram: string
   totalPrice: string
+  description: string
 }
 
 const JEWELRY_METALS = ["Sterling", "10K", "14K", "18K", "Plat"]
@@ -51,11 +52,11 @@ const JEWELRY_BRANDS = ["", "T&Co", "DY", "JA", "Cartier", "VCA", "Other"]
 const JEWELRY_STONES = ["", "None", "Diamond", "Sapphire", "Ruby", "Tanzanite", "Topaz", "Other"]
 
 const emptyJewelryData: JewelryData = {
-  metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "",
+  metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "", description: "",
 }
 
 const JEWELRY_COL_HEADERS = [
-  "Metal", "Brand", "Main Stone", "Weight (g)", "$/g", "Total",
+  "Metal", "Brand", "Main Stone", "Description", "Weight (g)", "$/g", "Total",
 ]
 
 interface WatchData {
@@ -307,6 +308,7 @@ function NewPurchaseForm() {
                 weight: item.weight.toString(),
                 costPerGram: jd.costPerGram?.toString() || "",
                 totalPrice: item.pricePaid.toString(),
+                description: jd.description || "",
               }
               jewelryRows.push(base)
             } else if (item.inventoryItem?.watchDetails || item.metalType === "WATCH" || catDef?.metalType === "WATCH") {
@@ -322,7 +324,7 @@ function NewPurchaseForm() {
                 serialNumber: wd?.serialNumber || "",
                 caseMetal: wd?.caseMetal || "",
                 caseSizeMM: wd?.caseSizeMM || "",
-                description: "",
+                description: wd?.description || "",
                 totalCost: item.pricePaid.toString(),
                 box: wd?.box || false,
                 paperwork: wd?.paperwork || false,
@@ -816,12 +818,14 @@ function NewPurchaseForm() {
                     metal: jd.metal || null, brand: jd.brand || null,
                     mainStone: jd.mainStone || null,
                     costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+                    description: jd.description || null,
                   }}),
                   ...(wd && { watchData: {
                     brand: wd.brand || null, referenceNumber: wd.referenceNumber || null,
                     serialNumber: wd.serialNumber || null, caseMetal: wd.caseMetal || null,
                     caseSizeMM: wd.caseSizeMM || null,
                     box: wd.box || false, paperwork: wd.paperwork || false,
+                    description: wd.description || null,
                   }}),
                 }
               }),
@@ -919,6 +923,7 @@ function NewPurchaseForm() {
                 metal: jd.metal || null, brand: jd.brand || null,
                 mainStone: jd.mainStone || null,
                 costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+                description: jd.description || null,
               }),
             })
           }
@@ -936,6 +941,7 @@ function NewPurchaseForm() {
                 caseSizeMM: wd.caseSizeMM || null,
                 box: wd.box || false,
                 paperwork: wd.paperwork || false,
+                description: wd.description || null,
               }),
             })
           }
@@ -1092,6 +1098,7 @@ function NewPurchaseForm() {
               brand: jd.brand || null,
               mainStone: jd.mainStone || null,
               costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+              description: jd.description || null,
             }),
           })
         }
@@ -1111,6 +1118,7 @@ function NewPurchaseForm() {
               caseSizeMM: wd.caseSizeMM || null,
               box: wd.box || false,
               paperwork: wd.paperwork || false,
+              description: wd.description || null,
             }),
           })
         }
@@ -1600,6 +1608,11 @@ function NewPurchaseForm() {
                               className={selectClass + " min-w-[90px]"}>
                               {JEWELRY_STONES.map(s => <option key={s} value={s}>{s || "--"}</option>)}
                             </select>
+                          </td>
+                          <td className={`${cellClass} align-middle`}>
+                            <input value={jd.description} placeholder="Description"
+                              onChange={e => updateJewelryItem(item.id, "description", e.target.value)}
+                              className={inputClass + " min-w-[120px]"} />
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <div className="flex items-center gap-0.5 min-w-[80px]">

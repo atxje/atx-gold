@@ -32,8 +32,15 @@ interface JewelryData {
 }
 
 const JEWELRY_METALS = ["Sterling", "10K", "14K", "18K", "Plat"]
-const JEWELRY_BRANDS = ["", "T&Co", "DY", "JA", "Cartier", "VCA", "Other"]
 const JEWELRY_STONES = ["", "None", "Diamond", "Sapphire", "Ruby", "Tanzanite", "Topaz", "Other"]
+
+// Build the brand <option> list: blank, the DB-managed brands, "Other", plus the
+// current value if it isn't already in the list (e.g. a legacy brand).
+function brandOptions(brands: string[], current: string): string[] {
+  const opts = ["", ...brands, "Other"]
+  if (current && !opts.includes(current)) opts.push(current)
+  return opts
+}
 
 const emptyJewelryData: JewelryData = {
   metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "", description: "",
@@ -45,7 +52,6 @@ interface WatchData {
   description: string; totalCost: string; box: boolean; paperwork: boolean
 }
 
-const WATCH_BRANDS = ["", "Rolex", "Cartier", "Omega", "Audemars Piguet", "Patek Philippe", "Breitling", "Tag Heuer", "IWC", "Panerai", "Tudor", "Hublot", "Other"]
 const WATCH_METALS = ["", "SS", "Gold", "Platinum", "Two-Tone", "Titanium", "Ceramic"]
 const WATCH_SIZES = ["", "26mm", "28mm", "31mm", "34mm", "36mm", "38mm", "39mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm"]
 
@@ -105,6 +111,8 @@ export default function ImportStockPage() {
   const router = useRouter()
 
   const [categories, setCategories] = useState<Record<string, CategoryDef>>({})
+  const [jewelryBrands, setJewelryBrands] = useState<string[]>([])
+  const [watchBrands, setWatchBrands] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -160,6 +168,10 @@ export default function ImportStockPage() {
           }
         })
         setCategories(map)
+      })
+      fetch("/api/brands").then(r => r.ok ? r.json() : []).then((bs: { name: string; type: string }[]) => {
+        setJewelryBrands(bs.filter(b => b.type === "JEWELRY").map(b => b.name))
+        setWatchBrands(bs.filter(b => b.type === "WATCH").map(b => b.name))
       })
     }
   }, [session])
@@ -824,7 +836,7 @@ export default function ImportStockPage() {
                         </td>
                         <td className={cellClass}>
                           <select value={jd.brand} onChange={e => updateJewelryField(item.id, "brand", e.target.value)} className={selectClass}>
-                            {JEWELRY_BRANDS.map(b => <option key={b} value={b}>{b || "–"}</option>)}
+                            {brandOptions(jewelryBrands, jd.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
                           </select>
                         </td>
                         <td className={cellClass}>
@@ -892,7 +904,7 @@ export default function ImportStockPage() {
                         </td>
                         <td className={cellClass}>
                           <select value={wd.brand} onChange={e => updateWatchField(item.id, "brand", e.target.value)} className={selectClass}>
-                            {WATCH_BRANDS.map(b => <option key={b} value={b}>{b || "–"}</option>)}
+                            {brandOptions(watchBrands, wd.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
                           </select>
                         </td>
                         <td className={cellClass}>

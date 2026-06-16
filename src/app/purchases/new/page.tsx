@@ -48,8 +48,14 @@ interface JewelryData {
 }
 
 const JEWELRY_METALS = ["Sterling", "10K", "14K", "18K", "Plat"]
-const JEWELRY_BRANDS = ["", "T&Co", "DY", "JA", "Cartier", "VCA", "Other"]
 const JEWELRY_STONES = ["", "None", "Diamond", "Sapphire", "Ruby", "Tanzanite", "Topaz", "Other"]
+
+// Brand <option> list: blank, DB-managed brands, "Other", plus current value if legacy.
+function brandOptions(brands: string[], current: string): string[] {
+  const opts = ["", ...brands, "Other"]
+  if (current && !opts.includes(current)) opts.push(current)
+  return opts
+}
 
 const emptyJewelryData: JewelryData = {
   metal: "", brand: "", mainStone: "", weight: "", costPerGram: "", totalPrice: "", description: "",
@@ -71,7 +77,6 @@ interface WatchData {
   paperwork: boolean
 }
 
-const WATCH_BRANDS = ["", "Rolex", "Cartier", "Omega", "Audemars Piguet", "Patek Philippe", "Breitling", "Tag Heuer", "IWC", "Panerai", "Tudor", "Hublot", "Other"]
 const WATCH_METALS = ["", "SS", "Gold", "Platinum", "Two-Tone", "Titanium", "Ceramic"]
 const WATCH_SIZES = ["", "26mm", "28mm", "31mm", "34mm", "36mm", "38mm", "39mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm"]
 
@@ -185,6 +190,8 @@ function NewPurchaseForm() {
   const preselectedLeadId = searchParams.get("leadId")
 
   const [categories, setCategories] = useState<Record<string, CategoryDef>>({})
+  const [jewelryBrands, setJewelryBrands] = useState<string[]>([])
+  const [watchBrands, setWatchBrands] = useState<string[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -219,6 +226,10 @@ function NewPurchaseForm() {
   useEffect(() => {
     if (session) {
       fetch("/api/leads").then(r => r.ok ? r.json() : []).then(setLeads)
+      fetch("/api/brands").then(r => r.ok ? r.json() : []).then((bs: { name: string; type: string }[]) => {
+        setJewelryBrands(bs.filter(b => b.type === "JEWELRY").map(b => b.name))
+        setWatchBrands(bs.filter(b => b.type === "WATCH").map(b => b.name))
+      })
       const catPromise = fetch("/api/categories").then(r => r.ok ? r.json() : []).then((cats: { id: string; name: string; metalType: string; weightUnit: string; subcategories: { name: string }[] }[]) => {
         const map: Record<string, CategoryDef> = {}
         cats.forEach(c => {
@@ -1600,7 +1611,7 @@ function NewPurchaseForm() {
                           <td className={`${cellClass} align-middle`}>
                             <select value={jd.brand} onChange={e => updateJewelryItem(item.id, "brand", e.target.value)}
                               className={selectClass + " min-w-[80px]"}>
-                              {JEWELRY_BRANDS.map(b => <option key={b} value={b}>{b || "--"}</option>)}
+                              {brandOptions(jewelryBrands, jd.brand).map(b => <option key={b} value={b}>{b || "--"}</option>)}
                             </select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
@@ -1697,7 +1708,7 @@ function NewPurchaseForm() {
                           <td className={`${cellClass} align-middle`}>
                             <select value={wd.brand} onChange={e => updateWatchItem(item.id, "brand", e.target.value)}
                               className={selectClass + " min-w-[120px]"}>
-                              {WATCH_BRANDS.map(b => <option key={b} value={b}>{b || "--"}</option>)}
+                              {brandOptions(watchBrands, wd.brand).map(b => <option key={b} value={b}>{b || "--"}</option>)}
                             </select>
                           </td>
                           <td className={`${cellClass} align-middle`}>

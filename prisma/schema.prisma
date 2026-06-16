@@ -433,6 +433,18 @@ model SmsMessage {
   @@index([sentAt])
 }
 
+model Brand {
+  id        String   @id @default(cuid())
+  name      String
+  type      String   // JEWELRY or WATCH
+  sortOrder Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, name])
+}
+
 model StockCategory {
   id            String             @id @default(cuid())
   name          String             @unique

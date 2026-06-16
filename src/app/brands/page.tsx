@@ -12,9 +12,10 @@ interface Brand {
   sortOrder: number
 }
 
-const SECTIONS: { type: string; label: string }[] = [
-  { type: "JEWELRY", label: "Jewelry Brands" },
-  { type: "WATCH", label: "Watch Brands" },
+const SECTIONS: { type: string; label: string; placeholder: string }[] = [
+  { type: "JEWELRY", label: "Jewelry Brands", placeholder: "Add brand and press Enter" },
+  { type: "WATCH", label: "Watch Brands", placeholder: "Add brand and press Enter" },
+  { type: "STONE", label: "Main Stones", placeholder: "Add stone and press Enter" },
 ]
 
 export default function BrandsPage() {
@@ -24,7 +25,7 @@ export default function BrandsPage() {
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
-  const [newName, setNewName] = useState<Record<string, string>>({ JEWELRY: "", WATCH: "" })
+  const [newName, setNewName] = useState<Record<string, string>>({ JEWELRY: "", WATCH: "", STONE: "" })
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -39,8 +40,10 @@ export default function BrandsPage() {
     setLoading(true)
     const res = await fetch("/api/brands")
     if (res.ok) {
-      const data = await res.json()
-      if (data.length === 0) {
+      const data: Brand[] = await res.json()
+      // Seed/backfill if any section's defaults are missing (e.g. STONE added later)
+      const missingType = SECTIONS.some(s => !data.some(b => b.type === s.type))
+      if (missingType) {
         await fetch("/api/brands/seed", { method: "POST" })
         const res2 = await fetch("/api/brands")
         if (res2.ok) setBrands(await res2.json())
@@ -102,9 +105,9 @@ export default function BrandsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Brands</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Brands &amp; Stones</h1>
         <p className="text-sm text-gray-500 mb-6">
-          These appear in the Brand dropdowns on Insert Stock and New Purchase.
+          These appear in the Brand and Main Stone dropdowns on Insert Stock and New Purchase.
         </p>
 
         {error && (
@@ -151,7 +154,7 @@ export default function BrandsPage() {
                     <input value={newName[section.type]}
                       onChange={e => setNewName({ ...newName, [section.type]: e.target.value })}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addBrand(section.type) } }}
-                      className="border rounded px-3 py-1.5 text-sm flex-1" placeholder="Add brand and press Enter" />
+                      className="border rounded px-3 py-1.5 text-sm flex-1" placeholder={section.placeholder} />
                     <button onClick={() => addBrand(section.type)}
                       className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Add</button>
                   </div>

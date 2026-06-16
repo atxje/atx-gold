@@ -32,12 +32,18 @@ interface JewelryData {
 }
 
 const JEWELRY_METALS = ["Sterling", "10K", "14K", "18K", "Plat"]
-const JEWELRY_STONES = ["", "None", "Diamond", "Sapphire", "Ruby", "Tanzanite", "Topaz", "Other"]
 
 // Build the brand <option> list: blank, the DB-managed brands, "Other", plus the
 // current value if it isn't already in the list (e.g. a legacy brand).
 function brandOptions(brands: string[], current: string): string[] {
   const opts = ["", ...brands, "Other"]
+  if (current && !opts.includes(current)) opts.push(current)
+  return opts
+}
+
+// Main-stone <option> list: blank, "None", DB-managed stones, "Other", plus legacy value.
+function stoneOptions(stones: string[], current: string): string[] {
+  const opts = ["", "None", ...stones, "Other"]
   if (current && !opts.includes(current)) opts.push(current)
   return opts
 }
@@ -113,6 +119,7 @@ export default function ImportStockPage() {
   const [categories, setCategories] = useState<Record<string, CategoryDef>>({})
   const [jewelryBrands, setJewelryBrands] = useState<string[]>([])
   const [watchBrands, setWatchBrands] = useState<string[]>([])
+  const [stones, setStones] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -172,6 +179,7 @@ export default function ImportStockPage() {
       fetch("/api/brands").then(r => r.ok ? r.json() : []).then((bs: { name: string; type: string }[]) => {
         setJewelryBrands(bs.filter(b => b.type === "JEWELRY").map(b => b.name))
         setWatchBrands(bs.filter(b => b.type === "WATCH").map(b => b.name))
+        setStones(bs.filter(b => b.type === "STONE").map(b => b.name))
       })
     }
   }, [session])
@@ -841,7 +849,7 @@ export default function ImportStockPage() {
                         </td>
                         <td className={cellClass}>
                           <select value={jd.mainStone} onChange={e => updateJewelryField(item.id, "mainStone", e.target.value)} className={selectClass}>
-                            {JEWELRY_STONES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
+                            {stoneOptions(stones, jd.mainStone).map(s => <option key={s} value={s}>{s || "–"}</option>)}
                           </select>
                         </td>
                         <td className={cellClass}><input value={jd.description} onChange={e => updateJewelryField(item.id, "description", e.target.value)} className={inputClass} placeholder="Description" /></td>

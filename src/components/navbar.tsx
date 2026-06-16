@@ -45,7 +45,7 @@ const navigation: NavEntry[] = [
         { name: "Insert Stock", href: "/inventory/import" },
       ]},
       { name: "Categories", href: "/categories" },
-      { name: "Brands", href: "/brands" },
+      { name: "Brands & Stones", href: "/brands" },
     ],
   },
   { name: "Reports", href: "/reports" },

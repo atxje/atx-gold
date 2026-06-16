@@ -24,8 +24,8 @@ export async function POST(request: Request) {
   const { name, type } = await request.json()
 
   if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 })
-  if (!["JEWELRY", "WATCH"].includes(type)) {
-    return NextResponse.json({ error: "type must be JEWELRY or WATCH" }, { status: 400 })
+  if (!["JEWELRY", "WATCH", "STONE"].includes(type)) {
+    return NextResponse.json({ error: "type must be JEWELRY, WATCH, or STONE" }, { status: 400 })
   }
 
   try {

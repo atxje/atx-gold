@@ -75,12 +75,15 @@ const SILVER_SCRAP_PAY_RATE = 0.915
 // Coins/bars are logged with their NET pure-metal weight in troy oz, so melt is
 // simply weight × spot (full spot, no per-coin purity table needed).
 
+// Platinum scrap: PT950 jewelry × pay rate
+const PLATINUM_SCRAP_PAY_RATE = 0.9
+
 // Jewelry metal — same scrap rates as gold/silver scrap
-const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver"; purity: number; payRate: number }> = {
+const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver" | "platinum"; purity: number; payRate: number }> = {
   "10K": { metal: "gold", purity: 0.395, payRate: GOLD_SCRAP_PAY_RATE },
   "14K": { metal: "gold", purity: 0.565, payRate: GOLD_SCRAP_PAY_RATE },
   "18K": { metal: "gold", purity: 0.73, payRate: GOLD_SCRAP_PAY_RATE },
-  "Plat": { metal: "gold", purity: 0, payRate: 0 },
+  "Plat": { metal: "platinum", purity: 0.95, payRate: PLATINUM_SCRAP_PAY_RATE },
   "Sterling": { metal: "silver", purity: 0.925, payRate: SILVER_SCRAP_PAY_RATE },
 }
 
@@ -100,9 +103,10 @@ export default function InventoryPage() {
   const [watchCategoryNames, setWatchCategoryNames] = useState<Set<string>>(new Set())
   const [goldCategoryNames, setGoldCategoryNames] = useState<Set<string>>(new Set())
   const [silverCategoryNames, setSilverCategoryNames] = useState<Set<string>>(new Set())
+  const [platinumCategoryNames, setPlatinumCategoryNames] = useState<Set<string>>(new Set())
   const [diamondSubcatKeys, setDiamondSubcatKeys] = useState<Set<string>>(new Set())
   const [showSold, setShowSold] = useState(false)
-  const [spotPrices, setSpotPrices] = useState<{ gold: number; silver: number; timestamp: string } | null>(null)
+  const [spotPrices, setSpotPrices] = useState<{ gold: number; silver: number; platinum: number; timestamp: string } | null>(null)
   const [spotLoading, setSpotLoading] = useState(false)
 
   async function fetchSpotPrices() {
@@ -145,11 +149,18 @@ export default function InventoryPage() {
       }
     }
 
+    if (platinumCategoryNames.has(item.category)) {
+      // Coins/bars logged in troy oz: weight is already the NET pure-platinum content → full spot
+      if (item.weightUnit === "TROY_OZ") {
+        return weight * spotPrices.platinum
+      }
+    }
+
     // Jewelry — same scrap formula based on metal type
     if (item.jewelryDetails?.metal) {
       const jm = JEWELRY_METAL_INFO[item.jewelryDetails.metal]
       if (jm && jm.purity > 0) {
-        const spot = jm.metal === "gold" ? spotPrices.gold : spotPrices.silver
+        const spot = jm.metal === "gold" ? spotPrices.gold : jm.metal === "silver" ? spotPrices.silver : spotPrices.platinum
         const spotPerGram = spot / GRAMS_PER_TROY_OZ
         return weight * jm.purity * jm.payRate * spotPerGram
       }
@@ -172,8 +183,9 @@ export default function InventoryPage() {
         setJewelryCategoryNames(new Set(jCats.map(c => c.name)))
         const wCats = cats.filter(c => c.metalType === "WATCH")
         setWatchCategoryNames(new Set(wCats.map(c => c.name)))
-        setGoldCategoryNames(new Set(cats.filter(c => c.metalType === "GOLD" || c.metalType === "PLATINUM" || c.metalType === "PALLADIUM").map(c => c.name)))
+        setGoldCategoryNames(new Set(cats.filter(c => c.metalType === "GOLD").map(c => c.name)))
         setSilverCategoryNames(new Set(cats.filter(c => c.metalType === "SILVER").map(c => c.name)))
+        setPlatinumCategoryNames(new Set(cats.filter(c => c.metalType === "PLATINUM").map(c => c.name)))
         // Build filter chips: non-diamond as-is, diamonds split into "Single Diamond" and "Mixed/Parcels"
         const chips: { label: string; key: string }[] = []
         const dSubKeys = new Set<string>()

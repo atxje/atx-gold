@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 interface SpotPrices {
   gold: number
   silver: number
+  platinum: number
   timestamp: string
 }
 
@@ -20,21 +21,24 @@ export async function GET() {
   }
 
   try {
-    const [goldRes, silverRes] = await Promise.all([
+    const [goldRes, silverRes, platinumRes] = await Promise.all([
       fetch("https://api.gold-api.com/price/XAU"),
       fetch("https://api.gold-api.com/price/XAG"),
+      fetch("https://api.gold-api.com/price/XPT"),
     ])
 
-    if (!goldRes.ok || !silverRes.ok) {
+    if (!goldRes.ok || !silverRes.ok || !platinumRes.ok) {
       throw new Error("Failed to fetch spot prices")
     }
 
     const goldData = await goldRes.json()
     const silverData = await silverRes.json()
+    const platinumData = await platinumRes.json()
 
     const result: SpotPrices = {
       gold: goldData.price,
       silver: silverData.price,
+      platinum: platinumData.price,
       timestamp: new Date().toISOString(),
     }
 

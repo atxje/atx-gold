@@ -72,15 +72,8 @@ const SILVER_SCRAP_PURITY: Record<string, number> = {
 }
 const SILVER_SCRAP_PAY_RATE = 0.915
 
-// Bullion — full spot, no discount (coins/bars)
-const GOLD_BULLION_PURITY: Record<string, number> = {
-  "Gold American Eagle": 1, "Gold Maple": 1, "Krugerrand": 1,
-  "PAMP Bar": 1, "VALCAMBI Bar": 1, "Credit Suisse Bar": 1, "Centenario": 0.9,
-  "1 gram bar": 1, "2.5 gram bar": 1, "5 gram bar": 1, "10 gram bar": 1, "20 gram bar": 1, "100 gram bar": 1,
-}
-const SILVER_BULLION_PURITY: Record<string, number> = {
-  "Silver Eagle": 1, "Silver Buffalo": 1, "Silver Generics": 0.999, "Silver Dollar (Peace/Morgan)": 1,
-}
+// Coins/bars are logged with their NET pure-metal weight in troy oz, so melt is
+// simply weight × spot (full spot, no per-coin purity table needed).
 
 // Jewelry metal — same scrap rates as gold/silver scrap
 const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver"; purity: number; payRate: number }> = {
@@ -127,30 +120,28 @@ export default function InventoryPage() {
     if (weight <= 0) return null
 
     if (goldCategoryNames.has(item.category)) {
-      // Scrap gold: purity × pay rate × spot per gram
+      // Scrap gold (grams = gross karat weight): purity × pay rate × spot per gram
       const scrapPurity = GOLD_SCRAP_PURITY[item.subcategory]
       if (scrapPurity !== undefined && scrapPurity > 0 && item.weightUnit === "GRAM") {
         const spotPerGram = spotPrices.gold / GRAMS_PER_TROY_OZ
         return weight * scrapPurity * GOLD_SCRAP_PAY_RATE * spotPerGram
       }
-      // Gold bullion: full spot
-      const bullionPurity = GOLD_BULLION_PURITY[item.subcategory]
-      if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ") {
-        return weight * bullionPurity * spotPrices.gold
+      // Coins/bars logged in troy oz: weight is already the NET pure-gold content → full spot
+      if (item.weightUnit === "TROY_OZ") {
+        return weight * spotPrices.gold
       }
     }
 
     if (silverCategoryNames.has(item.category)) {
-      // Scrap silver: purity × pay rate × spot per gram
+      // Scrap silver (grams = gross weight): purity × pay rate × spot per gram
       const scrapPurity = SILVER_SCRAP_PURITY[item.subcategory]
       if (scrapPurity !== undefined && item.weightUnit === "GRAM") {
         const spotPerGram = spotPrices.silver / GRAMS_PER_TROY_OZ
         return weight * scrapPurity * SILVER_SCRAP_PAY_RATE * spotPerGram
       }
-      // Silver bullion: full spot
-      const bullionPurity = SILVER_BULLION_PURITY[item.subcategory]
-      if (bullionPurity !== undefined && item.weightUnit === "TROY_OZ") {
-        return weight * bullionPurity * spotPrices.silver
+      // Coins/bars logged in troy oz: weight is already the NET pure-silver content → full spot
+      if (item.weightUnit === "TROY_OZ") {
+        return weight * spotPrices.silver
       }
     }
 

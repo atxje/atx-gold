@@ -87,6 +87,13 @@ const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver" | "platinum"
   "Sterling": { metal: "silver", purity: 0.925, payRate: SILVER_SCRAP_PAY_RATE },
 }
 
+// An item counts as in-stock if it has remaining weight, or — for unit-priced
+// items like watches that carry no weight — if it hasn't been sold yet.
+function hasStock(i: InventoryItem): boolean {
+  if (i.totalWeight - i.soldWeight > 0.0005) return true
+  return i.totalWeight <= 0.0005 && i.soldValue <= 0.0005 && i.totalCost > 0
+}
+
 export default function InventoryPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -256,7 +263,7 @@ export default function InventoryPage() {
   }
 
   function toggleAll() {
-    const visible = items.filter(i => (i.totalWeight - i.soldWeight) > 0.0005)
+    const visible = items.filter(hasStock)
     setSelected(prev => prev.size === visible.length ? new Set() : new Set(visible.map(i => i.id)))
   }
 
@@ -265,7 +272,7 @@ export default function InventoryPage() {
     router.push(`${path}?items=${ids}`)
   }
 
-  const allActive = showSold ? items : items.filter(i => (i.totalWeight - i.soldWeight) > 0.0005)
+  const allActive = showSold ? items : items.filter(hasStock)
 
   // Build chip list: DB chips + any inventory categories not in DB
   const chipKeys = new Set(allFilterChips.map(c => c.key))

@@ -7,6 +7,22 @@ import { useRouter, useParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
 
+interface DiamondDetails {
+  shape: string | null; caratWeight: number | null; color: string | null; clarity: string | null
+  lab: string | null; certNumber: string | null; cutGrade: string | null; polish: string | null
+  symmetry: string | null; fluorescence: string | null; measurements: string | null
+  costPerCarat: number | null; rapPrice: number | null; rapDiscount: number | null; notes: string | null
+}
+interface JewelryDetails {
+  metal: string | null; brand: string | null; mainStone: string | null
+  costPerGram: number | null; description: string | null
+}
+interface WatchDetails {
+  brand: string | null; referenceNumber: string | null; serialNumber: string | null
+  caseMetal: string | null; caseSizeMM: string | null
+  box: boolean; paperwork: boolean; description: string | null
+}
+
 interface InventoryItem {
   id: string
   name: string
@@ -20,6 +36,9 @@ interface InventoryItem {
   soldValue: number
   totalProfit: number
   status: "ON_STOCK" | "OUT_ON_MEMO"
+  diamondDetails: DiamondDetails | null
+  jewelryDetails: JewelryDetails | null
+  watchDetails: WatchDetails | null
   purchases: {
     id: string
     purchaseDate: string
@@ -102,6 +121,41 @@ const memoStatusColors: Record<string, string> = {
   CONVERTED: "text-green-600",
 }
 
+const JEWELRY_METALS = ["", "Sterling", "10K", "14K", "18K", "Plat"]
+const WATCH_METALS = ["", "SS", "Gold", "Platinum", "Two-Tone", "Titanium", "Ceramic"]
+const WATCH_SIZES = ["", "26mm", "28mm", "31mm", "34mm", "36mm", "38mm", "39mm", "40mm", "41mm", "42mm", "44mm", "45mm", "46mm"]
+const DIAMOND_SHAPES = ["", "Round", "Princess", "Cushion", "Oval", "Emerald", "Pear", "Marquise", "Radiant", "Asscher", "Heart", "Other"]
+const DIAMOND_COLORS = ["", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O-P", "Q-R", "S-Z", "Fancy"]
+const DIAMOND_CLARITIES = ["", "FL", "IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", "I1", "I2", "I3"]
+const DIAMOND_LABS = ["", "GIA", "AGS", "IGI", "EGL", "HRD", "Other"]
+const DIAMOND_GRADES = ["", "Excellent", "Very Good", "Good", "Fair", "Poor"]
+const DIAMOND_FLUORESCENCE = ["", "None", "Faint", "Medium", "Strong", "Very Strong"]
+
+// Brand/stone <option> lists from the DB-managed list, preserving any legacy value.
+function brandOptions(brands: string[], current: string): string[] {
+  const opts = ["", ...brands, "Other"]
+  if (current && !opts.includes(current)) opts.push(current)
+  return opts
+}
+function stoneOptions(stones: string[], current: string): string[] {
+  const opts = ["", "None", ...stones, "Other"]
+  if (current && !opts.includes(current)) opts.push(current)
+  return opts
+}
+const numOrNull = (s: string) => (s.trim() === "" ? null : parseFloat(s) || null)
+const strOrNull = (s: string) => (s.trim() === "" ? null : s)
+
+const labelClass = "block text-xs font-medium text-gray-600 mb-1"
+const inputClass = "w-full border rounded px-3 py-2 text-sm"
+
+type JewelryForm = { metal: string; brand: string; mainStone: string; costPerGram: string; description: string }
+type WatchForm = { brand: string; referenceNumber: string; serialNumber: string; caseMetal: string; caseSizeMM: string; box: boolean; paperwork: boolean; description: string }
+type DiamondForm = {
+  shape: string; caratWeight: string; color: string; clarity: string; lab: string; certNumber: string
+  cutGrade: string; polish: string; symmetry: string; fluorescence: string; measurements: string
+  costPerCarat: string; rapPrice: string; rapDiscount: string; notes: string
+}
+
 export default function InventoryItemPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -115,6 +169,18 @@ export default function InventoryItemPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc")
   const [filterType, setFilterType] = useState<TxType | "All" | "Transfer">("All")
 
+  // Edit mode
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [fWeight, setFWeight] = useState("")
+  const [fCost, setFCost] = useState("")
+  const [fJewelry, setFJewelry] = useState<JewelryForm>({ metal: "", brand: "", mainStone: "", costPerGram: "", description: "" })
+  const [fWatch, setFWatch] = useState<WatchForm>({ brand: "", referenceNumber: "", serialNumber: "", caseMetal: "", caseSizeMM: "", box: false, paperwork: false, description: "" })
+  const [fDiamond, setFDiamond] = useState<DiamondForm>({ shape: "", caratWeight: "", color: "", clarity: "", lab: "", certNumber: "", cutGrade: "", polish: "", symmetry: "", fluorescence: "", measurements: "", costPerCarat: "", rapPrice: "", rapDiscount: "", notes: "" })
+  const [jewelryBrands, setJewelryBrands] = useState<string[]>([])
+  const [watchBrands, setWatchBrands] = useState<string[]>([])
+  const [stones, setStones] = useState<string[]>([])
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
   }, [status, router])
@@ -125,8 +191,79 @@ export default function InventoryItemPage() {
       fetch(`/api/inventory/${id}`)
         .then(r => r.json())
         .then(data => { setItem(data); setLoading(false) })
+      fetch("/api/brands").then(r => r.ok ? r.json() : []).then((bs: { name: string; type: string }[]) => {
+        setJewelryBrands(bs.filter(b => b.type === "JEWELRY").map(b => b.name))
+        setWatchBrands(bs.filter(b => b.type === "WATCH").map(b => b.name))
+        setStones(bs.filter(b => b.type === "STONE").map(b => b.name))
+      })
     }
   }, [session, id])
+
+  function startEdit() {
+    if (!item) return
+    setFWeight(item.totalWeight.toString())
+    setFCost(item.totalCost.toString())
+    const j = item.jewelryDetails
+    setFJewelry({
+      metal: j?.metal ?? "", brand: j?.brand ?? "", mainStone: j?.mainStone ?? "",
+      costPerGram: j?.costPerGram?.toString() ?? "", description: j?.description ?? "",
+    })
+    const w = item.watchDetails
+    setFWatch({
+      brand: w?.brand ?? "", referenceNumber: w?.referenceNumber ?? "", serialNumber: w?.serialNumber ?? "",
+      caseMetal: w?.caseMetal ?? "", caseSizeMM: w?.caseSizeMM ?? "",
+      box: w?.box ?? false, paperwork: w?.paperwork ?? false, description: w?.description ?? "",
+    })
+    const d = item.diamondDetails
+    setFDiamond({
+      shape: d?.shape ?? "", caratWeight: d?.caratWeight?.toString() ?? "", color: d?.color ?? "", clarity: d?.clarity ?? "",
+      lab: d?.lab ?? "", certNumber: d?.certNumber ?? "", cutGrade: d?.cutGrade ?? "", polish: d?.polish ?? "",
+      symmetry: d?.symmetry ?? "", fluorescence: d?.fluorescence ?? "", measurements: d?.measurements ?? "",
+      costPerCarat: d?.costPerCarat?.toString() ?? "", rapPrice: d?.rapPrice?.toString() ?? "", rapDiscount: d?.rapDiscount?.toString() ?? "", notes: d?.notes ?? "",
+    })
+    setEditing(true)
+  }
+
+  async function saveEdit() {
+    if (!item) return
+    setSaving(true)
+    try {
+      const payload: Record<string, unknown> = { totalWeight: fWeight, totalCost: fCost }
+      if (item.jewelryDetails) {
+        payload.jewelryData = {
+          metal: strOrNull(fJewelry.metal), brand: strOrNull(fJewelry.brand), mainStone: strOrNull(fJewelry.mainStone),
+          costPerGram: numOrNull(fJewelry.costPerGram), description: strOrNull(fJewelry.description),
+        }
+      }
+      if (item.watchDetails) {
+        payload.watchData = {
+          brand: strOrNull(fWatch.brand), referenceNumber: strOrNull(fWatch.referenceNumber), serialNumber: strOrNull(fWatch.serialNumber),
+          caseMetal: strOrNull(fWatch.caseMetal), caseSizeMM: strOrNull(fWatch.caseSizeMM),
+          box: fWatch.box, paperwork: fWatch.paperwork, description: strOrNull(fWatch.description),
+        }
+      }
+      if (item.diamondDetails) {
+        payload.diamondData = {
+          shape: strOrNull(fDiamond.shape), caratWeight: numOrNull(fDiamond.caratWeight), color: strOrNull(fDiamond.color), clarity: strOrNull(fDiamond.clarity),
+          lab: strOrNull(fDiamond.lab), certNumber: strOrNull(fDiamond.certNumber), cutGrade: strOrNull(fDiamond.cutGrade), polish: strOrNull(fDiamond.polish),
+          symmetry: strOrNull(fDiamond.symmetry), fluorescence: strOrNull(fDiamond.fluorescence), measurements: strOrNull(fDiamond.measurements),
+          costPerCarat: numOrNull(fDiamond.costPerCarat), rapPrice: numOrNull(fDiamond.rapPrice), rapDiscount: numOrNull(fDiamond.rapDiscount), notes: strOrNull(fDiamond.notes),
+        }
+      }
+      const res = await fetch(`/api/inventory/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const full = await fetch(`/api/inventory/${id}`).then(r => r.json())
+        setItem(full)
+        setEditing(false)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function toggleStatus() {
     if (!item) return
@@ -239,10 +376,18 @@ export default function InventoryItemPage() {
               <h1 className="text-2xl font-bold text-gray-900">{item.name}</h1>
               <p className="text-sm text-gray-500 mt-1">{item.category.replace(/_/g, " ")} · {item.subcategory}</p>
             </div>
-            <button onClick={toggleStatus} disabled={updatingStatus}
-              className={`px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50 ${item.status === "ON_STOCK" ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-amber-100 text-amber-800 hover:bg-amber-200"}`}>
-              {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
-            </button>
+            <div className="flex items-center gap-2">
+              {!editing && (
+                <button onClick={startEdit}
+                  className="px-4 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200">
+                  Edit
+                </button>
+              )}
+              <button onClick={toggleStatus} disabled={updatingStatus}
+                className={`px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50 ${item.status === "ON_STOCK" ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-amber-100 text-amber-800 hover:bg-amber-200"}`}>
+                {item.status === "ON_STOCK" ? "On Stock" : "Out on Memo"}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -266,6 +411,197 @@ export default function InventoryItemPage() {
             </div>
           </div>
         </div>
+
+        {/* Edit panel */}
+        {editing && (
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit Item</h2>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className={labelClass}>Total Weight ({unit})</label>
+                <input type="number" step="any" value={fWeight} onChange={e => setFWeight(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Total Cost ($)</label>
+                <input type="number" step="any" value={fCost} onChange={e => setFCost(e.target.value)} className={inputClass} />
+              </div>
+            </div>
+
+            {item.jewelryDetails && (
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Jewelry Details</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelClass}>Metal</label>
+                    <select value={fJewelry.metal} onChange={e => setFJewelry({ ...fJewelry, metal: e.target.value })} className={inputClass}>
+                      {JEWELRY_METALS.map(m => <option key={m} value={m}>{m || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Brand</label>
+                    <select value={fJewelry.brand} onChange={e => setFJewelry({ ...fJewelry, brand: e.target.value })} className={inputClass}>
+                      {brandOptions(jewelryBrands, fJewelry.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Main Stone</label>
+                    <select value={fJewelry.mainStone} onChange={e => setFJewelry({ ...fJewelry, mainStone: e.target.value })} className={inputClass}>
+                      {stoneOptions(stones, fJewelry.mainStone).map(s => <option key={s} value={s}>{s || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Cost / gram ($)</label>
+                    <input type="number" step="any" value={fJewelry.costPerGram} onChange={e => setFJewelry({ ...fJewelry, costPerGram: e.target.value })} className={inputClass} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={labelClass}>Description</label>
+                    <input value={fJewelry.description} onChange={e => setFJewelry({ ...fJewelry, description: e.target.value })} className={inputClass} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {item.watchDetails && (
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Watch Details</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelClass}>Brand</label>
+                    <select value={fWatch.brand} onChange={e => setFWatch({ ...fWatch, brand: e.target.value })} className={inputClass}>
+                      {brandOptions(watchBrands, fWatch.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Case Metal</label>
+                    <select value={fWatch.caseMetal} onChange={e => setFWatch({ ...fWatch, caseMetal: e.target.value })} className={inputClass}>
+                      {WATCH_METALS.map(m => <option key={m} value={m}>{m || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Case Size</label>
+                    <select value={fWatch.caseSizeMM} onChange={e => setFWatch({ ...fWatch, caseSizeMM: e.target.value })} className={inputClass}>
+                      {WATCH_SIZES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Reference #</label>
+                    <input value={fWatch.referenceNumber} onChange={e => setFWatch({ ...fWatch, referenceNumber: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Serial #</label>
+                    <input value={fWatch.serialNumber} onChange={e => setFWatch({ ...fWatch, serialNumber: e.target.value })} className={inputClass} />
+                  </div>
+                  <div className="flex items-end gap-4 pb-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input type="checkbox" checked={fWatch.box} onChange={e => setFWatch({ ...fWatch, box: e.target.checked })} /> Box
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input type="checkbox" checked={fWatch.paperwork} onChange={e => setFWatch({ ...fWatch, paperwork: e.target.checked })} /> Papers
+                    </label>
+                  </div>
+                  <div className="col-span-2 sm:col-span-3">
+                    <label className={labelClass}>Description</label>
+                    <input value={fWatch.description} onChange={e => setFWatch({ ...fWatch, description: e.target.value })} className={inputClass} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {item.diamondDetails && (
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Diamond Details</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className={labelClass}>Shape</label>
+                    <select value={fDiamond.shape} onChange={e => setFDiamond({ ...fDiamond, shape: e.target.value })} className={inputClass}>
+                      {DIAMOND_SHAPES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Carat</label>
+                    <input type="number" step="any" value={fDiamond.caratWeight} onChange={e => setFDiamond({ ...fDiamond, caratWeight: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Color</label>
+                    <select value={fDiamond.color} onChange={e => setFDiamond({ ...fDiamond, color: e.target.value })} className={inputClass}>
+                      {DIAMOND_COLORS.map(c => <option key={c} value={c}>{c || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Clarity</label>
+                    <select value={fDiamond.clarity} onChange={e => setFDiamond({ ...fDiamond, clarity: e.target.value })} className={inputClass}>
+                      {DIAMOND_CLARITIES.map(c => <option key={c} value={c}>{c || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Lab</label>
+                    <select value={fDiamond.lab} onChange={e => setFDiamond({ ...fDiamond, lab: e.target.value })} className={inputClass}>
+                      {DIAMOND_LABS.map(l => <option key={l} value={l}>{l || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Cert #</label>
+                    <input value={fDiamond.certNumber} onChange={e => setFDiamond({ ...fDiamond, certNumber: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Cut</label>
+                    <select value={fDiamond.cutGrade} onChange={e => setFDiamond({ ...fDiamond, cutGrade: e.target.value })} className={inputClass}>
+                      {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Polish</label>
+                    <select value={fDiamond.polish} onChange={e => setFDiamond({ ...fDiamond, polish: e.target.value })} className={inputClass}>
+                      {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Symmetry</label>
+                    <select value={fDiamond.symmetry} onChange={e => setFDiamond({ ...fDiamond, symmetry: e.target.value })} className={inputClass}>
+                      {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Fluorescence</label>
+                    <select value={fDiamond.fluorescence} onChange={e => setFDiamond({ ...fDiamond, fluorescence: e.target.value })} className={inputClass}>
+                      {DIAMOND_FLUORESCENCE.map(f => <option key={f} value={f}>{f || "–"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Measurements</label>
+                    <input value={fDiamond.measurements} onChange={e => setFDiamond({ ...fDiamond, measurements: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Cost / ct ($)</label>
+                    <input type="number" step="any" value={fDiamond.costPerCarat} onChange={e => setFDiamond({ ...fDiamond, costPerCarat: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Rap / ct ($)</label>
+                    <input type="number" step="any" value={fDiamond.rapPrice} onChange={e => setFDiamond({ ...fDiamond, rapPrice: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Rap Disc (%)</label>
+                    <input type="number" step="any" value={fDiamond.rapDiscount} onChange={e => setFDiamond({ ...fDiamond, rapDiscount: e.target.value })} className={inputClass} />
+                  </div>
+                  <div className="col-span-2 sm:col-span-4">
+                    <label className={labelClass}>Notes</label>
+                    <input value={fDiamond.notes} onChange={e => setFDiamond({ ...fDiamond, notes: e.target.value })} className={inputClass} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={saveEdit} disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+              <button onClick={() => setEditing(false)} disabled={saving}
+                className="px-4 py-2 border border-gray-300 text-gray-600 rounded text-sm hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* Transaction History */}
         <div className="bg-white rounded-lg shadow overflow-hidden">

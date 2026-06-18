@@ -491,14 +491,10 @@ export default function ImportStockPage() {
       const wd = item.watchData!
       const c = parseFloat(wd.totalCost) || 0
       if (c === 0) continue
-      if (!item.subcategory) {
-        setError("All watch items need a type")
-        return
-      }
       const catDef = item.category ? categories[item.category] : watchCategories[0]?.[1]
       allItems.push({
         category: catDef?.label || "Watches",
-        subcategory: item.subcategory,
+        subcategory: item.subcategory || "Watch",
         metalType: "WATCH",
         weightUnit: "GRAM",
         weight: 0,

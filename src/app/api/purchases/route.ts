@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { MetalType, WeightUnit } from "@/generated/prisma/client"
+import { recalcPurchaseGrossProfit } from "@/lib/compensation"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -187,6 +188,10 @@ export async function POST(request: Request) {
         },
       },
     })
+
+    // Compute employee gross profit (jewelry gets recomputed once its metal is
+    // saved via /api/jewelry; scrap/coins are complete here)
+    await recalcPurchaseGrossProfit(purchase.id)
 
     // Update lead status to BOUGHT if not already
     if (lead.status !== "BOUGHT") {

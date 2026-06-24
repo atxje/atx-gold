@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { recalcGrossProfitForInventoryItem } from "@/lib/compensation"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -32,6 +33,9 @@ export async function POST(request: Request) {
       create: { inventoryItemId, ...fields },
       update: fields,
     })
+
+    // Metal is now known → (re)compute gross profit on the linked purchase(s)
+    await recalcGrossProfitForInventoryItem(inventoryItemId)
 
     return NextResponse.json(details)
   } catch (error) {

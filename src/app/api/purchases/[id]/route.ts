@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { recalcPurchaseGrossProfit } from "@/lib/compensation"
+import { getSpotPrices } from "@/lib/spot"
 
 export async function GET(
   request: Request,
@@ -139,6 +141,14 @@ export async function PUT(
       })
     }
   }
+
+  // Recompute gross profit on every edited item (weight/price may have changed)
+  try {
+    const spot = await getSpotPrices()
+    for (const item of items ?? []) {
+      if (item.id) await recalcPurchaseGrossProfit(item.id, spot)
+    }
+  } catch {}
 
   // Re-fetch the full document to return — if the original id was deleted, find a surviving sibling
   let purchase = await prisma.purchase.findUnique({

@@ -17,6 +17,7 @@ interface PurchaseItem {
   weightUnit: string
   pricePaid: number
   pricePerUnit: number | null
+  grossProfit: number | null
   inventoryItem: { id: string; name: string; itemCode: string | null } | null
 }
 
@@ -340,6 +341,48 @@ export default function PurchaseDetailPage() {
             </tr>
           </tfoot>
         </table>
+
+        {/* Employee compensation — on-screen only, never printed on the seller's copy */}
+        {!editMode && (() => {
+          const comped = purchase.items.filter(i => i.grossProfit != null)
+          if (comped.length === 0) return null
+          const totalGross = comped.reduce((s, i) => s + (i.grossProfit || 0), 0)
+          const totalCompValue = comped.reduce((s, i) => s + (i.grossProfit || 0) + i.pricePaid, 0)
+          const compedPaid = comped.reduce((s, i) => s + i.pricePaid, 0)
+          return (
+            <div className="mb-8 print:hidden rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3">Compensation (internal — not printed)</h3>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-xs text-gray-400">Metal Value</div>
+                  <div className="text-lg font-semibold text-gray-800">${totalCompValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">Paid</div>
+                  <div className="text-lg font-semibold text-gray-800">${compedPaid.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">Gross Profit</div>
+                  <div className={`text-lg font-bold ${totalGross >= 0 ? "text-green-700" : "text-red-600"}`}>
+                    ${totalGross.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+              {comped.length > 1 && (
+                <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
+                  {comped.map(i => (
+                    <div key={i.id} className="flex justify-between text-xs text-gray-500">
+                      <span>{i.inventoryItem?.itemCode ? `${i.inventoryItem.itemCode} · ` : ""}{i.description}</span>
+                      <span className={(i.grossProfit || 0) >= 0 ? "text-green-700" : "text-red-600"}>
+                        ${(i.grossProfit || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Payment Method */}
         {editMode ? (

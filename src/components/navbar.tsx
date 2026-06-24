@@ -49,6 +49,7 @@ const navigation: NavEntry[] = [
     ],
   },
   { name: "Reports", href: "/reports" },
+  { name: "Compensation", href: "/compensation" },
 ]
 
 function DropdownMenu({ group, pathname }: { group: NavGroup; pathname: string }) {

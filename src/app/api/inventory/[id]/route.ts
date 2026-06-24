@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { InventoryStatus } from "@/generated/prisma/client"
+import { recalcGrossProfitForInventoryItem } from "@/lib/compensation"
 
 export async function GET(
   request: Request,
@@ -112,6 +113,11 @@ export async function PATCH(
       update: watchData,
       create: { inventoryItemId: id, ...watchData },
     })
+  }
+
+  // Weight/cost/jewelry-metal may have changed → refresh linked purchases' gross profit
+  if (totalWeight !== undefined || totalCost !== undefined || jewelryData) {
+    await recalcGrossProfitForInventoryItem(id)
   }
 
   const item = await prisma.inventoryItem.findUnique({

@@ -20,6 +20,16 @@ const GOLD_PURITY: Record<string, number> = {
 }
 const GOLD_SPOT_FACTOR = 0.98
 
+// Resolve scrap-gold purity by exact subcategory, falling back to the karat token
+// in the name (e.g. "Mixed W/D 14K" → 14K) so karat variants work automatically.
+function karatPurity(subcategory: string, map: Record<string, number>): number | undefined {
+  if (map[subcategory] !== undefined) return map[subcategory]
+  const m = subcategory.match(/(\d{1,2})\s*K/i)
+  if (!m) return undefined
+  const karat = `${m[1]}K`
+  return map[karat] ?? map[`${karat}+`]
+}
+
 // Silver scrap: 91.5% purity × 85% of spot. Silver coins: $5 under spot per oz.
 const SILVER_SCRAP_PURITY = 0.915
 const SILVER_SCRAP_FACTOR = 0.85
@@ -53,7 +63,7 @@ export function compValue(input: CompInput, spot: SpotPrices): number | null {
       // Coins/bars are logged as net pure-gold troy oz → full purity × 98% spot
       if (weightUnit === "TROY_OZ") return weight * spot.gold * GOLD_SPOT_FACTOR
       // Scrap (gross grams): karat purity × 98% spot per gram
-      const p = GOLD_PURITY[input.subcategory ?? ""]
+      const p = karatPurity(input.subcategory ?? "", GOLD_PURITY)
       if (p === undefined) return null
       return weight * p * GOLD_SPOT_FACTOR * goldPerGram
     }

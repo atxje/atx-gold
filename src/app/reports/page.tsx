@@ -90,13 +90,23 @@ const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver"; purity: num
   "Sterling": { metal: "silver", purity: 0.925, payRate: SILVER_SCRAP_PAY_RATE },
 }
 
+// Resolve scrap-gold purity by exact subcategory, falling back to the karat token
+// in the name (e.g. "Mixed W/D 14K" → 14K) so karat variants work automatically.
+function karatPurity(subcategory: string, map: Record<string, number>): number | undefined {
+  if (map[subcategory] !== undefined) return map[subcategory]
+  const m = subcategory.match(/(\d{1,2})\s*K/i)
+  if (!m) return undefined
+  const karat = `${m[1]}K`
+  return map[karat] ?? map[`${karat}+`]
+}
+
 function itemMeltValue(item: ValuationItem, spotPrices: { gold: number; silver: number }): number | null {
   const weight = item.availableWeight
   if (weight <= 0) return null
 
   const mt = item.metalType
   if (mt === "GOLD" || mt === "PLATINUM" || mt === "PALLADIUM") {
-    const scrapPurity = GOLD_SCRAP_PURITY[item.subcategory]
+    const scrapPurity = karatPurity(item.subcategory, GOLD_SCRAP_PURITY)
     if (scrapPurity !== undefined && scrapPurity > 0 && item.weightUnit === "GRAM") {
       return weight * scrapPurity * GOLD_SCRAP_PAY_RATE * (spotPrices.gold / GRAMS_PER_TROY_OZ)
     }

@@ -66,6 +66,16 @@ const GOLD_SCRAP_PURITY: Record<string, number> = {
 }
 const GOLD_SCRAP_PAY_RATE = 0.98
 
+// Resolve scrap-gold purity by exact subcategory, falling back to the karat token
+// in the name (e.g. "Mixed W/D 14K" → 14K) so karat variants work automatically.
+function karatPurity(subcategory: string, map: Record<string, number>): number | undefined {
+  if (map[subcategory] !== undefined) return map[subcategory]
+  const m = subcategory.match(/(\d{1,2})\s*K/i)
+  if (!m) return undefined
+  const karat = `${m[1]}K`
+  return map[karat] ?? map[`${karat}+`]
+}
+
 // Scrap silver: 92.5% purity × 91.5% pay rate
 const SILVER_SCRAP_PURITY: Record<string, number> = {
   "Sterling Jewelry": 0.925, "Silverware": 0.925,
@@ -132,7 +142,7 @@ export default function InventoryPage() {
 
     if (goldCategoryNames.has(item.category)) {
       // Scrap gold (grams = gross karat weight): purity × pay rate × spot per gram
-      const scrapPurity = GOLD_SCRAP_PURITY[item.subcategory]
+      const scrapPurity = karatPurity(item.subcategory, GOLD_SCRAP_PURITY)
       if (scrapPurity !== undefined && scrapPurity > 0 && item.weightUnit === "GRAM") {
         const spotPerGram = spotPrices.gold / GRAMS_PER_TROY_OZ
         return weight * scrapPurity * GOLD_SCRAP_PAY_RATE * spotPerGram

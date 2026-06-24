@@ -62,7 +62,7 @@ const GRAMS_PER_TROY_OZ = 31.1035
 
 // Scrap gold: purity × 98% pay rate
 const GOLD_SCRAP_PURITY: Record<string, number> = {
-  "10K": 0.395, "14K": 0.565, "18K": 0.73, "21K+": 0.875, "22K": 0.9167, "24K": 0.99, "Mixed W/D": 0.565,
+  "10K": 0.395, "14K": 0.565, "18K": 0.73, "21K+": 0.875, "22K": 0.9, "24K": 0.99, "Mixed W/D": 0.565,
 }
 const GOLD_SCRAP_PAY_RATE = 0.98
 

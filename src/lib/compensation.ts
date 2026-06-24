@@ -14,7 +14,7 @@ const GOLD_PURITY: Record<string, number> = {
   "18K": 0.73,
   "21K": 0.875,
   "21K+": 0.875,
-  "22K": 0.89,
+  "22K": 0.9,
   "24K": 0.98,
   "Mixed W/D": 0.565,
 }

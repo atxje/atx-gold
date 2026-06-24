@@ -105,6 +105,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id
       }
 
+      // Resolve the user's role once and cache it on the token
+      if (token.id && !token.role) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true },
+        })
+        token.role = dbUser?.role ?? "ADMIN"
+      }
+
       // Initial sign in with Google
       if (account?.provider === "google") {
         token.accessToken = account.access_token
@@ -133,6 +142,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
+        session.user.role = token.role as string | undefined
         session.user.accessToken = token.accessToken as string | undefined
       }
       return session

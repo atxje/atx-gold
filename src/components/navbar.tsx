@@ -123,6 +123,10 @@ export function Navbar() {
   const { data: session } = useSession()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  // Employees only get their compensation report — hide the admin Reports link
+  const isEmployee = !!session?.user?.role && session.user.role !== "ADMIN"
+  const navEntries = isEmployee ? navigation.filter(e => e.name !== "Reports") : navigation
+
   return (
     <nav className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -133,7 +137,7 @@ export function Navbar() {
             </div>
             {/* Desktop navigation */}
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {navigation.map(entry =>
+              {navEntries.map(entry =>
                 isGroup(entry) ? (
                   <DropdownMenu key={entry.name} group={entry} pathname={pathname} />
                 ) : (

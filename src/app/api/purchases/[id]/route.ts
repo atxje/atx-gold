@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { recalcPurchaseGrossProfit } from "@/lib/compensation"
+import { recalcPurchaseGrossProfit, compForPurchaseIds } from "@/lib/compensation"
 import { getSpotPrices } from "@/lib/spot"
 
 export async function GET(
@@ -33,7 +33,16 @@ export async function GET(
     }) as typeof items
   }
 
-  return NextResponse.json({ ...purchase, items })
+  // Attach the compensation earned on each line, evaluated within its month so the
+  // $50k monthly threshold is respected
+  const compMap = await compForPurchaseIds(
+    purchase.userId,
+    purchase.purchaseDate,
+    items.map((i) => i.id)
+  )
+  const itemsWithComp = items.map((i) => ({ ...i, comp: compMap.get(i.id) ?? 0 }))
+
+  return NextResponse.json({ ...purchase, items: itemsWithComp })
 }
 
 export async function PUT(

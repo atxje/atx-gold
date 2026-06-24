@@ -18,6 +18,7 @@ interface PurchaseItem {
   pricePaid: number
   pricePerUnit: number | null
   grossProfit: number | null
+  comp: number | null
   inventoryItem: { id: string; name: string; itemCode: string | null } | null
 }
 
@@ -205,10 +206,12 @@ export default function PurchaseDetailPage() {
               </>
             ) : (
               <>
-                <button onClick={() => router.push(`/purchases/new?editId=${id}`)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  Edit
-                </button>
+                {session?.user?.role === "ADMIN" || !session?.user?.role ? (
+                  <button onClick={() => router.push(`/purchases/new?editId=${id}`)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Edit
+                  </button>
+                ) : null}
                 <button onClick={() => window.print()}
                   className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700">
                   Print / Save PDF
@@ -342,44 +345,33 @@ export default function PurchaseDetailPage() {
           </tfoot>
         </table>
 
-        {/* Employee compensation — on-screen only, never printed on the seller's copy */}
+        {/* Compensation earned on this transaction — on-screen only, never printed */}
         {!editMode && (() => {
-          const comped = purchase.items.filter(i => i.grossProfit != null)
-          if (comped.length === 0) return null
-          const totalGross = comped.reduce((s, i) => s + (i.grossProfit || 0), 0)
-          const totalCompValue = comped.reduce((s, i) => s + (i.grossProfit || 0) + i.pricePaid, 0)
-          const compedPaid = comped.reduce((s, i) => s + i.pricePaid, 0)
+          const totalComp = purchase.items.reduce((s, i) => s + (i.comp || 0), 0)
+          const multi = purchase.items.length > 1
           return (
             <div className="mb-8 print:hidden rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3">Compensation (internal — not printed)</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <div className="text-xs text-gray-400">Metal Value</div>
-                  <div className="text-lg font-semibold text-gray-800">${totalCompValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400">Paid</div>
-                  <div className="text-lg font-semibold text-gray-800">${compedPaid.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400">Gross Profit</div>
-                  <div className={`text-lg font-bold ${totalGross >= 0 ? "text-green-700" : "text-red-600"}`}>
-                    ${totalGross.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase">Compensation earned (internal — not printed)</h3>
+                <div className={`text-2xl font-bold ${totalComp > 0 ? "text-green-700" : "text-gray-400"}`}>
+                  ${totalComp.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </div>
               </div>
-              {comped.length > 1 && (
+              {multi && (
                 <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
-                  {comped.map(i => (
+                  {purchase.items.map(i => (
                     <div key={i.id} className="flex justify-between text-xs text-gray-500">
                       <span>{i.inventoryItem?.itemCode ? `${i.inventoryItem.itemCode} · ` : ""}{i.description}</span>
-                      <span className={(i.grossProfit || 0) >= 0 ? "text-green-700" : "text-red-600"}>
-                        ${(i.grossProfit || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      <span className={(i.comp || 0) > 0 ? "text-green-700" : "text-gray-400"}>
+                        ${(i.comp || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                       </span>
                     </div>
                   ))}
                 </div>
               )}
+              <p className="mt-2 text-[11px] text-gray-400">
+                10% of monthly gross profit above $50,000 — $0 until that month&apos;s threshold is reached.
+              </p>
             </div>
           )
         })()}

@@ -1,87 +1,81 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { allocateMonthlyComp, monthKey, monthLabel, MonthlyPurchase } from "@/lib/compensation"
 
-// Per-employee gross-profit report. Groups purchases by the user who logged them.
+// Per-employee compensation, grouped by calendar month. Employees (non-ADMIN)
+// only ever see their own data, regardless of query params.
 export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  const role = session.user.role ?? "ADMIN"
   const { searchParams } = new URL(request.url)
-  const start = searchParams.get("start")
-  const end = searchParams.get("end")
 
-  const where: Record<string, unknown> = {}
-  if (start || end) {
-    const range: Record<string, Date> = {}
-    if (start) range.gte = new Date(start)
-    if (end) {
-      // +1 day buffer: local dates are stored as next-day UTC midnight
-      const e = new Date(end)
-      e.setDate(e.getDate() + 1)
-      range.lt = e
-    }
-    where.purchaseDate = range
+  let userIds: string[] | undefined
+  if (role !== "ADMIN") {
+    userIds = [session.user.id]
+  } else {
+    const q = searchParams.get("userId")
+    if (q) userIds = [q]
   }
 
-  const purchases = await prisma.purchase.findMany({
-    where,
+  const rows = await prisma.purchase.findMany({
+    where: userIds ? { userId: { in: userIds } } : {},
     select: {
-      id: true,
-      purchaseNumber: true,
-      purchaseDate: true,
-      description: true,
-      metalType: true,
-      weight: true,
-      weightUnit: true,
-      pricePaid: true,
-      grossProfit: true,
+      id: true, purchaseNumber: true, purchaseDate: true, description: true,
+      metalType: true, weight: true, weightUnit: true, pricePaid: true, grossProfit: true,
       user: { select: { id: true, name: true, email: true } },
-      lead: { select: { name: true } },
       inventoryItem: { select: { itemCode: true } },
     },
-    orderBy: { purchaseDate: "desc" },
+    orderBy: { purchaseDate: "asc" },
   })
 
-  const byUser = new Map<
+  // Group by user → month
+  const users = new Map<
     string,
-    {
-      userId: string
-      name: string | null
-      email: string
-      purchaseCount: number
-      compedCount: number
-      totalPaid: number
-      totalGrossProfit: number
-      purchases: typeof purchases
-    }
+    { userId: string; name: string | null; email: string; months: Map<string, MonthlyPurchase[]> }
   >()
-
-  for (const p of purchases) {
-    const key = p.user.id
-    let row = byUser.get(key)
-    if (!row) {
-      row = {
-        userId: p.user.id,
-        name: p.user.name,
-        email: p.user.email,
-        purchaseCount: 0,
-        compedCount: 0,
-        totalPaid: 0,
-        totalGrossProfit: 0,
-        purchases: [],
-      }
-      byUser.set(key, row)
+  for (const r of rows) {
+    let u = users.get(r.user.id)
+    if (!u) {
+      u = { userId: r.user.id, name: r.user.name, email: r.user.email, months: new Map() }
+      users.set(r.user.id, u)
     }
-    row.purchaseCount += 1
-    row.totalPaid += p.pricePaid
-    if (p.grossProfit !== null && p.grossProfit !== undefined) {
-      row.compedCount += 1
-      row.totalGrossProfit += p.grossProfit
-    }
-    row.purchases.push(p)
+    const mk = monthKey(r.purchaseDate)
+    const bucket = u.months.get(mk) ?? []
+    bucket.push({
+      id: r.id, purchaseNumber: r.purchaseNumber, purchaseDate: r.purchaseDate,
+      description: r.description, metalType: r.metalType, weight: r.weight,
+      weightUnit: r.weightUnit, pricePaid: r.pricePaid, grossProfit: r.grossProfit,
+      itemCode: r.inventoryItem?.itemCode ?? null,
+    })
+    u.months.set(mk, bucket)
   }
 
-  const employees = Array.from(byUser.values()).sort((a, b) => b.totalGrossProfit - a.totalGrossProfit)
-  return NextResponse.json({ employees })
+  const employees = Array.from(users.values())
+    .map((u) => ({
+      userId: u.userId,
+      name: u.name,
+      email: u.email,
+      months: Array.from(u.months.entries())
+        .sort((a, b) => b[0].localeCompare(a[0])) // newest month first
+        .map(([key, ps]) => {
+          const alloc = allocateMonthlyComp(ps)
+          return {
+            key,
+            label: monthLabel(key),
+            totalGrossProfit: alloc.totalGrossProfit,
+            totalComp: alloc.totalComp,
+            threshold: alloc.threshold,
+            reached: alloc.reached,
+            remainingToThreshold: alloc.remainingToThreshold,
+            // show newest purchase first in the list
+            purchases: alloc.purchases.slice().reverse(),
+          }
+        }),
+    }))
+    .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+
+  return NextResponse.json({ role, employees })
 }

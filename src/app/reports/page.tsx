@@ -168,7 +168,9 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
-  }, [status, router])
+    // Employees may only see their own compensation report
+    if (session?.user?.role && session.user.role !== "ADMIN") router.replace("/compensation")
+  }, [status, session, router])
 
   useEffect(() => {
     if (session) { fetchData(); fetchValuation() }

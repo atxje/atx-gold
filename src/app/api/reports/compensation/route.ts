@@ -3,6 +3,35 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { allocateMonthlyComp, monthKey, monthLabel, MonthlyPurchase } from "@/lib/compensation"
 
+// Collapse a month's per-line purchases into one row per purchase document
+// (siblings sharing a purchaseNumber), summing their compensation
+function groupByDocument(purchases: (MonthlyPurchase & { comp: number })[]) {
+  const map = new Map<
+    string,
+    { id: string; purchaseNumber: string | null; purchaseDate: Date; itemCount: number; comp: number; firstDesc: string; firstCode: string | null }
+  >()
+  for (const p of purchases) {
+    const key = p.purchaseNumber ?? `id:${p.id}`
+    let d = map.get(key)
+    if (!d) {
+      d = { id: p.id, purchaseNumber: p.purchaseNumber, purchaseDate: p.purchaseDate, itemCount: 0, comp: 0, firstDesc: p.description, firstCode: p.itemCode }
+      map.set(key, d)
+    }
+    d.itemCount += 1
+    d.comp += p.comp
+  }
+  return Array.from(map.values())
+    .map((d) => ({
+      id: d.id,
+      purchaseNumber: d.purchaseNumber,
+      purchaseDate: d.purchaseDate,
+      itemCount: d.itemCount,
+      label: d.itemCount === 1 ? `${d.firstCode ? d.firstCode + " · " : ""}${d.firstDesc}` : `${d.itemCount} items`,
+      comp: d.comp,
+    }))
+    .sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime())
+}
+
 // Per-employee compensation, grouped by calendar month. Only EMPLOYEE-role users
 // appear; non-admins only ever see their own data regardless of query params.
 export async function GET(request: Request) {
@@ -82,7 +111,7 @@ export async function GET(request: Request) {
             guarantee: alloc.guarantee,
             payout: alloc.payout,
             guaranteeApplied: alloc.guaranteeApplied,
-            purchases: alloc.purchases.slice().reverse(), // newest purchase first
+            documents: groupByDocument(alloc.purchases), // one row per purchase document, newest first
           }
         })
 
@@ -97,7 +126,7 @@ export async function GET(request: Request) {
           guarantee: empty.guarantee,
           payout: empty.payout,
           guaranteeApplied: empty.guaranteeApplied,
-          purchases: [],
+          documents: [],
         })
       }
 

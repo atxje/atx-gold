@@ -3,22 +3,16 @@
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
 
-interface PurchaseRow {
+interface DocumentRow {
   id: string
   purchaseNumber: string | null
   purchaseDate: string
-  description: string
-  metalType: string
-  weight: number
-  weightUnit: string
-  pricePaid: number
-  grossProfit: number | null
+  itemCount: number
+  label: string
   comp: number
-  itemCode: string | null
 }
 
 interface MonthRow {
@@ -29,7 +23,7 @@ interface MonthRow {
   guarantee: number
   payout: number
   guaranteeApplied: boolean
-  purchases: PurchaseRow[]
+  documents: DocumentRow[]
 }
 
 interface Employee {
@@ -42,6 +36,7 @@ interface Employee {
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" })
 
 function MonthCard({ m }: { m: MonthRow }) {
+  const router = useRouter()
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
@@ -72,36 +67,30 @@ function MonthCard({ m }: { m: MonthRow }) {
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
             <th className="text-left px-5 py-2 text-xs font-semibold text-gray-500 uppercase">Date</th>
-            <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Doc</th>
-            <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Item</th>
+            <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Document</th>
+            <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Items</th>
             <th className="text-right px-5 py-2 text-xs font-semibold text-gray-500 uppercase">Compensation</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {m.purchases.length === 0 && (
+          {m.documents.length === 0 && (
             <tr>
               <td colSpan={4} className="px-5 py-4 text-center text-sm text-gray-400">
                 No purchases yet this month — guaranteed minimum applies.
               </td>
             </tr>
           )}
-          {m.purchases.map((p) => (
-            <tr key={p.id} className="hover:bg-amber-50/40">
-              <td className="px-5 py-2 text-sm text-gray-600 whitespace-nowrap">
-                <Link href={`/purchases/${p.id}`} className="block">{format(new Date(p.purchaseDate), "MMM d")}</Link>
-              </td>
-              <td className="px-3 py-2 text-sm">
-                <Link href={`/purchases/${p.id}`} className="text-amber-600 hover:text-amber-700">
-                  {p.purchaseNumber || "—"}
-                </Link>
-              </td>
-              <td className="px-3 py-2 text-sm text-gray-700">
-                <Link href={`/purchases/${p.id}`} className="block">
-                  {p.itemCode ? `${p.itemCode} · ` : ""}{p.description}
-                </Link>
-              </td>
-              <td className={`px-5 py-2 text-right text-sm font-medium ${p.grossProfit == null ? "text-gray-300" : p.comp >= 0 ? "text-green-700" : "text-red-600"}`}>
-                {p.grossProfit == null ? "—" : money(p.comp)}
+          {m.documents.map((d) => (
+            <tr
+              key={d.id}
+              onClick={() => router.push(`/purchases/${d.id}`)}
+              className="hover:bg-amber-50/40 cursor-pointer"
+            >
+              <td className="px-5 py-2 text-sm text-gray-600 whitespace-nowrap">{format(new Date(d.purchaseDate), "MMM d")}</td>
+              <td className="px-3 py-2 text-sm font-medium text-amber-600">{d.purchaseNumber || "—"}</td>
+              <td className="px-3 py-2 text-sm text-gray-700">{d.label}</td>
+              <td className={`px-5 py-2 text-right text-sm font-medium ${d.comp > 0 ? "text-green-700" : d.comp < 0 ? "text-red-600" : "text-gray-300"}`}>
+                {money(d.comp)}
               </td>
             </tr>
           ))}

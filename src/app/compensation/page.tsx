@@ -78,6 +78,13 @@ function MonthCard({ m }: { m: MonthRow }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
+          {m.purchases.length === 0 && (
+            <tr>
+              <td colSpan={4} className="px-5 py-4 text-center text-sm text-gray-400">
+                No purchases yet this month — guaranteed minimum applies.
+              </td>
+            </tr>
+          )}
           {m.purchases.map((p) => (
             <tr key={p.id} className="hover:bg-amber-50/40">
               <td className="px-5 py-2 text-sm text-gray-600 whitespace-nowrap">

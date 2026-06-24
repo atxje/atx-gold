@@ -62,6 +62,7 @@ export default function PurchaseDetailPage() {
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [editMode, setEditMode] = useState(false)
 
   // Edit state
@@ -171,6 +172,24 @@ export default function PurchaseDetailPage() {
     }
   }
 
+  async function deleteDocument() {
+    if (!purchase) return
+    const label = purchase.purchaseNumber || "this purchase"
+    if (!confirm(`Delete ${label}? This removes the document and reverses the stock it added. This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/purchases/${id}?scope=document`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || "Failed to delete")
+        return
+      }
+      router.push("/documents")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (status === "loading" || !session || loading)
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   if (!purchase)
@@ -207,10 +226,16 @@ export default function PurchaseDetailPage() {
             ) : (
               <>
                 {session?.user?.role === "ADMIN" || !session?.user?.role ? (
-                  <button onClick={() => router.push(`/purchases/new?editId=${id}`)}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    Edit
-                  </button>
+                  <>
+                    <button onClick={() => router.push(`/purchases/new?editId=${id}`)}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      Edit
+                    </button>
+                    <button onClick={deleteDocument} disabled={deleting}
+                      className="px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+                      {deleting ? "Deleting…" : "Delete"}
+                    </button>
+                  </>
                 ) : null}
                 <button onClick={() => window.print()}
                   className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700">

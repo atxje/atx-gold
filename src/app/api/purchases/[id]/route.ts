@@ -194,9 +194,66 @@ export async function DELETE(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
+  const { searchParams } = new URL(request.url)
+  const scopeDocument = searchParams.get("scope") === "document"
+
+  const target = await prisma.purchase.findUnique({
+    where: { id },
+    select: { id: true, purchaseNumber: true },
+  })
+  if (!target) return NextResponse.json({ error: "Purchase not found" }, { status: 404 })
+
+  // Which purchase rows to remove: just this line, or the whole document
+  const toDelete = await prisma.purchase.findMany({
+    where: scopeDocument && target.purchaseNumber ? { purchaseNumber: target.purchaseNumber } : { id },
+    select: { id: true, weight: true, pricePaid: true, quantity: true, inventoryItemId: true },
+  })
+
+  const itemIds = [...new Set(toDelete.map((p) => p.inventoryItemId).filter(Boolean))] as string[]
+
+  // Block deletion if the linked stock already has downstream documents — removing
+  // it would corrupt sale/memo/mix records
+  if (itemIds.length) {
+    const [inv, memo, mix] = await Promise.all([
+      prisma.invoiceItem.count({ where: { inventoryItemId: { in: itemIds } } }),
+      prisma.memoItem.count({ where: { inventoryItemId: { in: itemIds } } }),
+      prisma.mixTransferItem.count({ where: { inventoryItemId: { in: itemIds } } }),
+    ])
+    if (inv > 0 || memo > 0 || mix > 0) {
+      return NextResponse.json(
+        { error: "This purchase's stock has been invoiced, memoed, or mixed/transferred. Reverse those documents first." },
+        { status: 409 }
+      )
+    }
+  }
 
   try {
-    await prisma.purchase.delete({ where: { id } })
+    await prisma.$transaction(async (tx) => {
+      // Reverse each purchase's contribution to its inventory item
+      for (const p of toDelete) {
+        if (p.inventoryItemId) {
+          await tx.inventoryItem.update({
+            where: { id: p.inventoryItemId },
+            data: {
+              totalWeight: { decrement: p.weight },
+              availableWeight: { decrement: p.weight },
+              totalCost: { decrement: p.pricePaid },
+              quantity: { decrement: p.quantity },
+            },
+          })
+        }
+      }
+
+      await tx.purchase.deleteMany({ where: { id: { in: toDelete.map((p) => p.id) } } })
+
+      // Remove now-orphaned coded items (jewelry/diamond/watch); details cascade
+      for (const itemId of itemIds) {
+        const item = await tx.inventoryItem.findUnique({ where: { id: itemId }, select: { itemCode: true } })
+        if (!item?.itemCode) continue
+        const remaining = await tx.purchase.count({ where: { inventoryItemId: itemId } })
+        if (remaining === 0) await tx.inventoryItem.delete({ where: { id: itemId } })
+      }
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting purchase:", error)

@@ -67,9 +67,9 @@ export async function GET(request: Request) {
             label: monthLabel(key),
             totalGrossProfit: alloc.totalGrossProfit,
             totalComp: alloc.totalComp,
-            threshold: alloc.threshold,
-            reached: alloc.reached,
-            remainingToThreshold: alloc.remainingToThreshold,
+            guarantee: alloc.guarantee,
+            payout: alloc.payout,
+            guaranteeApplied: alloc.guaranteeApplied,
             // show newest purchase first in the list
             purchases: alloc.purchases.slice().reverse(),
           }

@@ -26,9 +26,9 @@ interface MonthRow {
   label: string
   totalGrossProfit: number
   totalComp: number
-  threshold: number
-  reached: boolean
-  remainingToThreshold: number
+  guarantee: number
+  payout: number
+  guaranteeApplied: boolean
   purchases: PurchaseRow[]
 }
 
@@ -39,40 +39,31 @@ interface Employee {
   months: MonthRow[]
 }
 
-const unitLabels: Record<string, string> = { GRAM: "g", TROY_OZ: "oz", CARAT: "ct" }
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" })
 
 function MonthCard({ m }: { m: MonthRow }) {
-  const pct = Math.min(100, (m.totalGrossProfit / m.threshold) * 100)
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
-        <div className="flex items-baseline justify-between mb-2">
+        <div className="flex items-baseline justify-between">
           <h3 className="text-lg font-semibold text-gray-900">{m.label}</h3>
           <div className="text-right">
-            <div className="text-xs text-gray-400">Compensation earned</div>
-            <div className={`text-xl font-bold ${m.totalComp > 0 ? "text-green-700" : "text-gray-400"}`}>
-              {money(m.totalComp)}
-            </div>
+            <div className="text-xs text-gray-400">Compensation</div>
+            <div className="text-2xl font-bold text-green-700">{money(m.payout)}</div>
           </div>
         </div>
-
-        {/* Threshold meter */}
-        <div className="h-3 w-full rounded-full bg-gray-100 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${m.reached ? "bg-green-500" : "bg-amber-400"}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="mt-1.5 flex justify-between text-xs">
-          <span className="text-gray-600">
-            Gross profit <span className="font-semibold text-gray-800">{money(m.totalGrossProfit)}</span>
-            <span className="text-gray-400"> / {money(m.threshold)}</span>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span className="text-gray-500">
+            10% of gross profit (<span className="font-medium text-gray-700">{money(m.totalGrossProfit)}</span>) = {money(m.totalComp)}
           </span>
-          {m.reached ? (
-            <span className="text-green-700 font-medium">Threshold reached — earning 10%</span>
+          {m.guaranteeApplied ? (
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
+              Guaranteed minimum {money(m.guarantee)} applied
+            </span>
           ) : (
-            <span className="text-amber-600 font-medium">{money(m.remainingToThreshold)} to go before 10% starts</span>
+            <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium">
+              Above {money(m.guarantee)} guarantee
+            </span>
           )}
         </div>
       </div>
@@ -83,18 +74,14 @@ function MonthCard({ m }: { m: MonthRow }) {
             <th className="text-left px-5 py-2 text-xs font-semibold text-gray-500 uppercase">Date</th>
             <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Doc</th>
             <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Item</th>
-            <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Paid</th>
-            <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Gross Profit</th>
-            <th className="text-right px-5 py-2 text-xs font-semibold text-gray-500 uppercase">Comp</th>
+            <th className="text-right px-5 py-2 text-xs font-semibold text-gray-500 uppercase">Compensation</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {m.purchases.map((p) => (
             <tr key={p.id} className="hover:bg-amber-50/40">
               <td className="px-5 py-2 text-sm text-gray-600 whitespace-nowrap">
-                <Link href={`/purchases/${p.id}`} className="block">
-                  {format(new Date(p.purchaseDate), "MMM d")}
-                </Link>
+                <Link href={`/purchases/${p.id}`} className="block">{format(new Date(p.purchaseDate), "MMM d")}</Link>
               </td>
               <td className="px-3 py-2 text-sm">
                 <Link href={`/purchases/${p.id}`} className="text-amber-600 hover:text-amber-700">
@@ -106,16 +93,18 @@ function MonthCard({ m }: { m: MonthRow }) {
                   {p.itemCode ? `${p.itemCode} · ` : ""}{p.description}
                 </Link>
               </td>
-              <td className="px-3 py-2 text-right text-sm text-gray-600">{money(p.pricePaid)}</td>
-              <td className="px-3 py-2 text-right text-sm text-gray-600">
-                {p.grossProfit == null ? "—" : money(p.grossProfit)}
-              </td>
-              <td className={`px-5 py-2 text-right text-sm font-medium ${p.comp > 0 ? "text-green-700" : "text-gray-300"}`}>
-                {money(p.comp)}
+              <td className={`px-5 py-2 text-right text-sm font-medium ${p.grossProfit == null ? "text-gray-300" : p.comp >= 0 ? "text-green-700" : "text-red-600"}`}>
+                {p.grossProfit == null ? "—" : money(p.comp)}
               </td>
             </tr>
           ))}
         </tbody>
+        <tfoot className="bg-gray-50 border-t border-gray-200">
+          <tr>
+            <td colSpan={3} className="px-5 py-2 text-sm font-semibold text-gray-700">Total (10%)</td>
+            <td className="px-5 py-2 text-right text-sm font-bold text-gray-800">{money(m.totalComp)}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   )
@@ -154,15 +143,14 @@ export default function CompensationPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">
           {isAdmin ? "Employee Compensation" : "My Compensation"}
         </h1>
         <p className="text-sm text-gray-500 mb-6">
-          10% of gross profit, paid on the amount above {money(50000)} of gross profit in a calendar month.
+          10% of gross profit, with a guaranteed minimum of {money(5000)} per month.
         </p>
 
-        {/* Employee selector (admin only) */}
         {isAdmin && employees.length > 1 && (
           <div className="flex flex-wrap gap-2 mb-6">
             {employees.map((e) => (

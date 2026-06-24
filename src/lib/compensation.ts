@@ -127,10 +127,10 @@ export async function recalcGrossProfitForInventoryItem(inventoryItemId: string)
   for (const p of purchases) await recalcPurchaseGrossProfit(p.id, spot)
 }
 
-// ─── Employee compensation: 10% of monthly gross profit above a $50k floor ───
+// ─── Employee compensation: 10% of gross profit, $5,000/month guaranteed ───
 
 export const COMP_RATE = 0.1
-export const MONTHLY_THRESHOLD = 50000
+export const MONTHLY_GUARANTEE = 5000
 
 export interface MonthlyPurchase {
   id: string
@@ -147,38 +147,33 @@ export interface MonthlyPurchase {
 
 export interface MonthlyComp {
   totalGrossProfit: number
-  totalComp: number
-  threshold: number
-  reached: boolean
-  remainingToThreshold: number
+  totalComp: number // 10% of gross profit (sum of per-transaction comp)
+  guarantee: number // monthly guaranteed minimum
+  payout: number // what the employee actually receives: max(guarantee, totalComp)
+  guaranteeApplied: boolean // true when the guarantee tops up the 10%
   purchases: (MonthlyPurchase & { comp: number })[]
 }
 
-// Compensable gross profit at cumulative month-to-date total x.
-function compensable(x: number): number {
-  return Math.max(0, x - MONTHLY_THRESHOLD)
-}
-
-// Allocate each purchase a threshold-aware compensation, ordered chronologically,
-// so the per-purchase comps telescope to 10% × max(0, monthlyGross − 50k).
+// Per-transaction comp is a flat 10% of that deal's gross profit. The $5k
+// guarantee is applied to the monthly sum, not per transaction.
 export function allocateMonthlyComp(purchases: MonthlyPurchase[]): MonthlyComp {
   const ordered = [...purchases].sort((a, b) => a.purchaseDate.getTime() - b.purchaseDate.getTime())
-  let cum = 0
+  let totalGrossProfit = 0
   let totalComp = 0
   const withComp = ordered.map((p) => {
     const gp = p.grossProfit ?? 0
-    const before = cum
-    cum += gp
-    const comp = COMP_RATE * (compensable(cum) - compensable(before))
+    totalGrossProfit += gp
+    const comp = COMP_RATE * gp
     totalComp += comp
     return { ...p, comp }
   })
+  const payout = Math.max(MONTHLY_GUARANTEE, totalComp)
   return {
-    totalGrossProfit: cum,
+    totalGrossProfit,
     totalComp,
-    threshold: MONTHLY_THRESHOLD,
-    reached: cum >= MONTHLY_THRESHOLD,
-    remainingToThreshold: Math.max(0, MONTHLY_THRESHOLD - cum),
+    guarantee: MONTHLY_GUARANTEE,
+    payout,
+    guaranteeApplied: totalComp < MONTHLY_GUARANTEE,
     purchases: withComp,
   }
 }
@@ -195,39 +190,4 @@ const MONTH_NAMES = [
 export function monthLabel(key: string): string {
   const [y, m] = key.split("-")
   return `${MONTH_NAMES[parseInt(m) - 1]} ${y}`
-}
-
-function monthRangeUTC(d: Date): { start: Date; end: Date } {
-  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))
-  return { start, end }
-}
-
-async function loadMonthPurchases(userId: string, start: Date, end: Date): Promise<MonthlyPurchase[]> {
-  const rows = await prisma.purchase.findMany({
-    where: { userId, purchaseDate: { gte: start, lt: end } },
-    select: {
-      id: true, purchaseNumber: true, purchaseDate: true, description: true,
-      metalType: true, weight: true, weightUnit: true, pricePaid: true, grossProfit: true,
-      inventoryItem: { select: { itemCode: true } },
-    },
-    orderBy: { purchaseDate: "asc" },
-  })
-  return rows.map((r) => ({ ...r, itemCode: r.inventoryItem?.itemCode ?? null }))
-}
-
-// Comp earned on specific purchase ids, evaluated within their calendar month so
-// the $50k monthly threshold is respected. Used on the purchase document.
-export async function compForPurchaseIds(
-  userId: string,
-  refDate: Date,
-  ids: string[]
-): Promise<Map<string, number>> {
-  const { start, end } = monthRangeUTC(refDate)
-  const purchases = await loadMonthPurchases(userId, start, end)
-  const alloc = allocateMonthlyComp(purchases)
-  const map = new Map<string, number>()
-  const idSet = new Set(ids)
-  for (const p of alloc.purchases) if (idSet.has(p.id)) map.set(p.id, p.comp)
-  return map
 }

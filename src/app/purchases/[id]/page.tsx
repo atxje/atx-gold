@@ -362,15 +362,15 @@ export default function PurchaseDetailPage() {
                   {purchase.items.map(i => (
                     <div key={i.id} className="flex justify-between text-xs text-gray-500">
                       <span>{i.inventoryItem?.itemCode ? `${i.inventoryItem.itemCode} · ` : ""}{i.description}</span>
-                      <span className={(i.comp || 0) > 0 ? "text-green-700" : "text-gray-400"}>
-                        ${(i.comp || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      <span className={i.comp == null ? "text-gray-300" : (i.comp || 0) > 0 ? "text-green-700" : "text-gray-400"}>
+                        {i.comp == null ? "—" : `$${i.comp.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
                       </span>
                     </div>
                   ))}
                 </div>
               )}
               <p className="mt-2 text-[11px] text-gray-400">
-                10% of monthly gross profit above $50,000 — $0 until that month&apos;s threshold is reached.
+                10% of gross profit (guaranteed minimum $5,000/month).
               </p>
             </div>
           )

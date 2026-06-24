@@ -12,8 +12,8 @@ const GOLD_PURITY: Record<string, number> = {
   "10K": 0.395,
   "14K": 0.565,
   "18K": 0.73,
-  "21K": 0.875,
-  "21K+": 0.875,
+  "21K": 0.85,
+  "21K+": 0.85,
   "22K": 0.9,
   "24K": 0.98,
   "Mixed W/D": 0.565,
@@ -34,6 +34,14 @@ function karatPurity(subcategory: string, map: Record<string, number>): number |
 const SILVER_SCRAP_PURITY = 0.915
 const SILVER_SCRAP_FACTOR = 0.85
 const SILVER_COIN_UNDER_SPOT = 5
+
+// Silver coin subcategories valued by purity × spot factor instead of the
+// default (spot − $5/oz)
+const SILVER_COIN_SPECIAL: Record<string, { purity: number; factor: number }> = {
+  "Silver Dollar (Peace/Morgan)": { purity: 0.98, factor: 0.85 },
+  "US coins 90%": { purity: 0.98, factor: 0.85 },
+  "US coins 40%": { purity: 0.98, factor: 0.85 },
+}
 
 // Platinum scrap / jewelry: 88% purity × 90% of spot. Coins: full purity × 98% of spot.
 const PLAT_SCRAP_PURITY = 0.88
@@ -68,7 +76,11 @@ export function compValue(input: CompInput, spot: SpotPrices): number | null {
       return weight * p * GOLD_SPOT_FACTOR * goldPerGram
     }
     case "SILVER": {
-      if (weightUnit === "TROY_OZ") return weight * Math.max(0, spot.silver - SILVER_COIN_UNDER_SPOT)
+      if (weightUnit === "TROY_OZ") {
+        const special = SILVER_COIN_SPECIAL[input.subcategory ?? ""]
+        if (special) return weight * special.purity * special.factor * spot.silver
+        return weight * Math.max(0, spot.silver - SILVER_COIN_UNDER_SPOT)
+      }
       return weight * SILVER_SCRAP_PURITY * SILVER_SCRAP_FACTOR * silverPerGram
     }
     case "PLATINUM": {

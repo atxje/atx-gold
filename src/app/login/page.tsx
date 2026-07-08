@@ -3,7 +3,6 @@
 import { signIn } from "next-auth/react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -89,11 +88,6 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
 
-          <div className="text-center">
-            <Link href="/register" className="text-sm text-blue-600 hover:text-blue-500">
-              Don&apos;t have an account? Register
-            </Link>
-          </div>
         </form>
 
         <div className="mt-6">

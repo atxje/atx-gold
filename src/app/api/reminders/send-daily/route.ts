@@ -9,9 +9,9 @@ const OFFICE_ADDRESS = "7951 Shoal Creek Blvd, suite 250 Austin, TX 78757"
 const OFFICE_INSTRUCTIONS = "We are located in an office inside the PNC Bank building - Second floor suite 250"
 
 export async function POST(request: Request) {
-  // Verify cron secret to prevent unauthorized calls
+  // Verify cron secret to prevent unauthorized calls; fail closed if unset
   const authHeader = request.headers.get("authorization")
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

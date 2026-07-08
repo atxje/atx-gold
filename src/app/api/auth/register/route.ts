@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
+import { auth } from "@/lib/auth"
 
 export async function POST(request: Request) {
   try {
-    const { name, email, password } = await request.json()
+    const session = await auth()
+    if (session?.user?.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const { name, email, password, role } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json(
@@ -31,6 +40,7 @@ export async function POST(request: Request) {
         name,
         email,
         password: hashedPassword,
+        role: role === "ADMIN" ? "ADMIN" : "EMPLOYEE",
       },
     })
 

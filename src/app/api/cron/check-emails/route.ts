@@ -154,14 +154,13 @@ async function findExistingLead(phone: string | null, email: string | null) {
   })
 }
 
-// Verify cron secret to prevent unauthorized access
+// Verify cron secret to prevent unauthorized access; fail closed if unset
 function verifyCronSecret(request: Request): boolean {
   const authHeader = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
 
-  // If no secret is set, allow the request (for development)
   if (!cronSecret) {
-    return true
+    return false
   }
 
   return authHeader === `Bearer ${cronSecret}`

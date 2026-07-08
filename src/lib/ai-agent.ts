@@ -39,7 +39,7 @@ export async function generateAIResponse(
 ): Promise<string> {
   // If this is the first message (no history), send an intro
   if (conversationHistory.length === 0) {
-    return `Hi ${leadName}! This is the scheduling assistant from [Business Name]. I understand you're interested in selling some jewelry or precious metals. I'd love to help you schedule an appointment with our buyer. When would be a good time for you to come in for an evaluation?`
+    return `Hi ${leadName}! This is the scheduling assistant from ATX Jewelry Exchange. I understand you're interested in selling some jewelry or precious metals. I'd love to help you schedule an appointment with our buyer. When would be a good time for you to come in for an evaluation?`
   }
 
   // Build messages for Claude

@@ -62,10 +62,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        console.log("Login attempt with:", credentials?.email)
-
         if (!credentials?.email || !credentials?.password) {
-          console.log("Missing email or password")
           return null
         }
 
@@ -73,10 +70,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: { email: { equals: credentials.email as string, mode: "insensitive" } },
         })
 
-        console.log("User found:", user ? "yes" : "no")
-
         if (!user || !user.password) {
-          console.log("No user or no password set")
           return null
         }
 
@@ -84,8 +78,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           credentials.password as string,
           user.password
         )
-
-        console.log("Password valid:", isValid)
 
         if (!isValid) {
           return null
@@ -111,7 +103,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: { id: token.id as string },
           select: { role: true },
         })
-        token.role = dbUser?.role ?? "ADMIN"
+        token.role = dbUser?.role ?? "EMPLOYEE"
       }
 
       // Initial sign in with Google

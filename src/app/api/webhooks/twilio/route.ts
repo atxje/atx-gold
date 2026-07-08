@@ -1,15 +1,43 @@
 import { NextResponse } from "next/server"
+import twilio from "twilio"
 import { prisma } from "@/lib/prisma"
 import { sendSms, formatPhoneNumber } from "@/lib/twilio"
 import { generateAIResponse } from "@/lib/ai-agent"
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData()
+    // Validate the Twilio request signature; fail closed if the auth token is unset
+    const authToken = process.env.TWILIO_AUTH_TOKEN
+    const signature = request.headers.get("x-twilio-signature")
 
-    const from = formData.get("From") as string
-    const body = formData.get("Body") as string
-    const messageSid = formData.get("MessageSid") as string
+    const formData = await request.formData()
+    const params: Record<string, string> = {}
+    formData.forEach((value, key) => {
+      params[key] = value.toString()
+    })
+
+    if (!authToken || !signature) {
+      return new NextResponse("Forbidden", { status: 403 })
+    }
+
+    // Reconstruct the public URL Twilio signed (Vercel terminates TLS at the proxy)
+    const requestUrl = new URL(request.url)
+    const proto =
+      request.headers.get("x-forwarded-proto") ??
+      requestUrl.protocol.replace(":", "")
+    const host =
+      request.headers.get("x-forwarded-host") ??
+      request.headers.get("host") ??
+      requestUrl.host
+    const publicUrl = `${proto}://${host}${requestUrl.pathname}${requestUrl.search}`
+
+    if (!twilio.validateRequest(authToken, signature, publicUrl, params)) {
+      return new NextResponse("Forbidden", { status: 403 })
+    }
+
+    const from = params["From"]
+    const body = params["Body"]
+    const messageSid = params["MessageSid"]
 
     if (!from || !body) {
       return new NextResponse("Missing required fields", { status: 400 })

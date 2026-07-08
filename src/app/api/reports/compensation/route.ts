@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const role = session.user.role ?? "ADMIN"
+  const role = session.user.role ?? "EMPLOYEE"
   const { searchParams } = new URL(request.url)
 
   // Resolve which employees are in scope

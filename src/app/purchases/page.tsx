@@ -5,7 +5,8 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
-import { format, startOfWeek, startOfMonth, startOfYear, isAfter } from "date-fns"
+import { startOfWeek, startOfMonth, startOfYear } from "date-fns"
+import { formatPurchaseDate, purchaseDateAsLocalDay, purchaseDateKey } from "@/lib/purchase-date"
 
 interface Purchase {
   id: string
@@ -18,6 +19,8 @@ interface Purchase {
   pricePaid: number
   purchaseDate: string
   notes: string | null
+  overpayFlag?: boolean
+  overpayReason?: string | null
   lead: {
     id: string
     name: string
@@ -60,6 +63,9 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true)
   const [metalFilter, setMetalFilter] = useState("")
   const [dateRange, setDateRange] = useState("")
+  const [flaggedOnly, setFlaggedOnly] = useState(false)
+
+  const isAdmin = session?.user?.role === "ADMIN"
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -87,7 +93,8 @@ export default function PurchasesPage() {
   }
 
 const filteredPurchases = useMemo(() => {
-    if (!dateRange) return purchases
+    const base = flaggedOnly ? purchases.filter(p => p.overpayFlag) : purchases
+    if (!dateRange) return base
 
     const now = new Date()
     let startDate: Date
@@ -103,11 +110,11 @@ const filteredPurchases = useMemo(() => {
         startDate = startOfYear(now)
         break
       default:
-        return purchases
+        return base
     }
 
-    return purchases.filter(p => isAfter(new Date(p.purchaseDate), startDate))
-  }, [purchases, dateRange])
+    return base.filter(p => purchaseDateAsLocalDay(p.purchaseDate) >= startDate)
+  }, [purchases, dateRange, flaggedOnly])
 
   const totalValue = filteredPurchases.reduce((sum, p) => sum + p.pricePaid, 0)
   const totalWeight = filteredPurchases.reduce((sum, p) => sum + p.weight, 0)
@@ -117,7 +124,7 @@ const filteredPurchases = useMemo(() => {
   const purchaseDocCount = useMemo(() => {
     const seen = new Set<string>()
     for (const p of filteredPurchases) {
-      seen.add(p.purchaseNumber || `${p.lead.id}_${p.purchaseDate.split("T")[0]}`)
+      seen.add(p.purchaseNumber || `${p.lead.id}_${purchaseDateKey(p.purchaseDate)}`)
     }
     return seen.size
   }, [filteredPurchases])
@@ -134,7 +141,7 @@ const filteredPurchases = useMemo(() => {
         stats[p.metalType] = { count: 0, totalValue: 0, totalWeight: 0, avgPerGram: 0 }
         docMetalSeen[p.metalType] = new Set()
       }
-      const docKey = p.purchaseNumber || `${p.lead.id}_${p.purchaseDate.split("T")[0]}`
+      const docKey = p.purchaseNumber || `${p.lead.id}_${purchaseDateKey(p.purchaseDate)}`
       docMetalSeen[p.metalType].add(docKey)
       stats[p.metalType].totalValue += p.pricePaid
       stats[p.metalType].totalWeight += p.weight
@@ -261,6 +268,17 @@ const filteredPurchases = useMemo(() => {
               <option value="month">This Month</option>
               <option value="year">This Year</option>
             </select>
+            {isAdmin && (
+              <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md cursor-pointer text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={flaggedOnly}
+                  onChange={e => setFlaggedOnly(e.target.checked)}
+                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                Flagged only
+              </label>
+            )}
           </div>
         </div>
 
@@ -290,26 +308,39 @@ const filteredPurchases = useMemo(() => {
                   const seen = new Set<string>()
                   const rows: Purchase[] = []
                   for (const p of filteredPurchases) {
-                    const key = p.purchaseNumber || `${p.lead.id}_${p.purchaseDate.split("T")[0]}`
+                    const key = p.purchaseNumber || `${p.lead.id}_${purchaseDateKey(p.purchaseDate)}`
                     if (!seen.has(key)) {
                       rows.push(p)
                       seen.add(key)
                     }
                   }
                   return rows.map(p => {
-                    const key = p.purchaseNumber || `${p.lead.id}_${p.purchaseDate.split("T")[0]}`
+                    const key = p.purchaseNumber || `${p.lead.id}_${purchaseDateKey(p.purchaseDate)}`
                     const group = filteredPurchases.filter(x =>
-                      (x.purchaseNumber || `${x.lead.id}_${x.purchaseDate.split("T")[0]}`) === key
+                      (x.purchaseNumber || `${x.lead.id}_${purchaseDateKey(x.purchaseDate)}`) === key
                     )
                     const total = group.reduce((s, x) => s + x.pricePaid, 0)
                     const itemSummary = group.length === 1
                       ? p.description
                       : group.map(x => x.description).join(", ")
+                    const groupFlagged = isAdmin && group.some(x => x.overpayFlag)
                     return (
                       <tr key={p.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/purchases/${p.id}`)}>
-                        <td className="px-6 py-4 text-sm font-semibold text-amber-600">{p.purchaseNumber || "—"}</td>
+                        <td className="px-6 py-4 text-sm font-semibold text-amber-600">
+                          <span className="inline-flex items-center gap-1.5">
+                            {p.purchaseNumber || "—"}
+                            {groupFlagged && (
+                              <span
+                                title={group.find(x => x.overpayFlag)?.overpayReason || "Exceeds buying guidelines"}
+                                className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 text-red-700"
+                              >
+                                ⚠ OVER
+                              </span>
+                            )}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {format(new Date(p.purchaseDate), "MMM d, yyyy")}
+                          {formatPurchaseDate(p.purchaseDate)}
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-900">{p.lead.name}</td>
                         <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">

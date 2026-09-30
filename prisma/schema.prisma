@@ -383,6 +383,11 @@ model Purchase {
   notes           String?    @db.Text
   paymentMethod   String?    @db.Text
 
+  // Overpayment flag vs buying guidelines, computed at save time (admin-only)
+  overpayFlag         Boolean @default(false)
+  overpayReason       String?
+  overpaySpotSnapshot Float?
+
   lead          Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user          User           @relation(fields: [userId], references: [id])
   inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id])
@@ -394,6 +399,18 @@ model Purchase {
   @@index([userId])
   @@index([purchaseDate])
   @@index([inventoryItemId])
+}
+
+// Singleton row: buying guidelines for the overpayment flag (admin-editable)
+model BuyingGuidelines {
+  id                        String   @id @default(cuid())
+  maxPctMeltGoldPlat        Float    @default(0.80) // max fraction of melt for gold/platinum scrap & jewelry
+  maxPctMeltSilverScrap     Float    @default(0.60) // max fraction of melt for silverware & scrap silver
+  maxUnderSpotGoldPlatCoins Float    @default(150)  // gold/plat coins: flag if paid > (spot − this) per fine ozt
+  maxUnderSpotSilverCoins   Float    @default(8)    // .999 silver coins/bars: flag if paid > (spot − this) per fine ozt
+  maxUnderSpotSilverJunk    Float    @default(15)   // junk/90% silver (Peace/Morgan, US 90%/40%): flag if paid > (spot − this) per fine ozt
+  updatedAt                 DateTime @updatedAt
+  updatedBy                 String?
 }
 
 enum ConversationStatus {

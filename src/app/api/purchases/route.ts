@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { MetalType, WeightUnit } from "@/generated/prisma/client"
 import { recalcPurchaseGrossProfit } from "@/lib/compensation"
+import { parsePurchaseDate } from "@/lib/purchase-date"
+import { applyOverpayFlag, stripOverpay } from "@/lib/overpay"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -40,7 +42,9 @@ export async function GET(request: Request) {
     orderBy: { purchaseDate: "desc" },
   })
 
-  return NextResponse.json(purchases)
+  // Overpay flags are admin-only — strip them for everyone else
+  const isAdmin = session.user.role === "ADMIN"
+  return NextResponse.json(isAdmin ? purchases : purchases.map(stripOverpay))
 }
 
 export async function POST(request: Request) {
@@ -178,7 +182,7 @@ export async function POST(request: Request) {
         category: category || null,
         subcategory: effectiveSubcategory || null,
         inventoryItemId,
-        purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
+        purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : new Date(),
         notes,
         paymentMethod: paymentMethod ? JSON.stringify(paymentMethod) : null,
       },
@@ -193,6 +197,9 @@ export async function POST(request: Request) {
     // saved via /api/jewelry; scrap/coins are complete here)
     await recalcPurchaseGrossProfit(purchase.id)
 
+    // Overpay flag vs buying guidelines — informational, never blocks the save
+    await applyOverpayFlag(purchase.id)
+
     // Update lead status to BOUGHT if not already
     if (lead.status !== "BOUGHT") {
       await prisma.lead.update({
@@ -201,7 +208,8 @@ export async function POST(request: Request) {
       })
     }
 
-    return NextResponse.json({ ...purchase, itemCode: generatedItemCode })
+    const responsePurchase = session.user.role === "ADMIN" ? purchase : stripOverpay(purchase)
+    return NextResponse.json({ ...responsePurchase, itemCode: generatedItemCode })
   } catch (error) {
     console.error("Error creating purchase:", error)
     return NextResponse.json(

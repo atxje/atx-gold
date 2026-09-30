@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
-import { format } from "date-fns"
+import { formatPurchaseDate } from "@/lib/purchase-date"
 
 interface DocumentRow {
   id: string
@@ -86,7 +86,7 @@ function MonthCard({ m }: { m: MonthRow }) {
               onClick={() => router.push(`/purchases/${d.id}`)}
               className="hover:bg-amber-50/40 cursor-pointer"
             >
-              <td className="px-5 py-2 text-sm text-gray-600 whitespace-nowrap">{format(new Date(d.purchaseDate), "MMM d")}</td>
+              <td className="px-5 py-2 text-sm text-gray-600 whitespace-nowrap">{formatPurchaseDate(d.purchaseDate, "MMM d")}</td>
               <td className="px-3 py-2 text-sm font-medium text-amber-600">{d.purchaseNumber || "—"}</td>
               <td className="px-3 py-2 text-sm text-gray-700">{d.label}</td>
               <td className={`px-5 py-2 text-right text-sm font-medium ${d.comp > 0 ? "text-green-700" : d.comp < 0 ? "text-red-600" : "text-gray-300"}`}>

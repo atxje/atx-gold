@@ -1,14 +1,14 @@
 import { prisma } from "./prisma"
 import { getSpotPrices, SpotPrices } from "./spot"
 
-const GRAMS_PER_TROY_OZ = 31.1035
+export const GRAMS_PER_TROY_OZ = 31.1035
 
 // Employee gross-profit comp rates. These are intentionally separate from the
 // on-screen "melt" display rates in src/app/inventory/page.tsx.
 //
 // Gold scrap / gold jewelry: purity by karat × 98% of spot.
 // Gold coins (net troy oz): full purity × 98% of spot.
-const GOLD_PURITY: Record<string, number> = {
+export const GOLD_PURITY: Record<string, number> = {
   "10K": 0.395,
   "14K": 0.565,
   "18K": 0.73,
@@ -22,7 +22,7 @@ const GOLD_SPOT_FACTOR = 0.98
 
 // Resolve scrap-gold purity by exact subcategory, falling back to the karat token
 // in the name (e.g. "Mixed W/D 14K" → 14K) so karat variants work automatically.
-function karatPurity(subcategory: string, map: Record<string, number>): number | undefined {
+export function karatPurity(subcategory: string, map: Record<string, number>): number | undefined {
   if (map[subcategory] !== undefined) return map[subcategory]
   const m = subcategory.match(/(\d{1,2})\s*K/i)
   if (!m) return undefined
@@ -31,20 +31,20 @@ function karatPurity(subcategory: string, map: Record<string, number>): number |
 }
 
 // Silver scrap: 91.5% purity × 85% of spot. Silver coins: $5 under spot per oz.
-const SILVER_SCRAP_PURITY = 0.915
-const SILVER_SCRAP_FACTOR = 0.85
+export const SILVER_SCRAP_PURITY = 0.915
+export const SILVER_SCRAP_FACTOR = 0.85
 const SILVER_COIN_UNDER_SPOT = 5
 
 // Silver coin subcategories valued by purity × spot factor instead of the
 // default (spot − $5/oz)
-const SILVER_COIN_SPECIAL: Record<string, { purity: number; factor: number }> = {
+export const SILVER_COIN_SPECIAL: Record<string, { purity: number; factor: number }> = {
   "Silver Dollar (Peace/Morgan)": { purity: 0.98, factor: 0.85 },
   "US coins 90%": { purity: 0.98, factor: 0.85 },
   "US coins 40%": { purity: 0.98, factor: 0.85 },
 }
 
 // Platinum scrap / jewelry: 88% purity × 90% of spot. Coins: full purity × 98% of spot.
-const PLAT_SCRAP_PURITY = 0.88
+export const PLAT_SCRAP_PURITY = 0.88
 const PLAT_SCRAP_FACTOR = 0.9
 const PLAT_COIN_FACTOR = 0.98
 

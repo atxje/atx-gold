@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { recalcPurchaseGrossProfit, COMP_RATE } from "@/lib/compensation"
 import { getSpotPrices } from "@/lib/spot"
+import { parsePurchaseDate } from "@/lib/purchase-date"
+import { applyOverpayFlag, loadGuidelines, stripOverpay } from "@/lib/overpay"
 
 export async function GET(
   request: Request,
@@ -39,6 +41,10 @@ export async function GET(
     comp: i.grossProfit == null ? null : COMP_RATE * i.grossProfit,
   }))
 
+  // Overpay flags are admin-only — strip them for everyone else
+  if (session.user.role !== "ADMIN") {
+    return NextResponse.json({ ...stripOverpay(purchase), items: itemsWithComp.map(stripOverpay) })
+  }
   return NextResponse.json({ ...purchase, items: itemsWithComp })
 }
 
@@ -95,7 +101,7 @@ export async function PUT(
         weight: item.weight,
         pricePerUnit: item.pricePerUnit ?? null,
         pricePaid: item.pricePaid,
-        purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
+        purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : undefined,
         notes: notes ?? null,
         paymentMethod: paymentMethodJson,
       },
@@ -156,6 +162,15 @@ export async function PUT(
     }
   } catch {}
 
+  // Recompute overpay flags — informational, never blocks the save
+  try {
+    const spot = await getSpotPrices()
+    const guidelines = await loadGuidelines()
+    for (const item of items ?? []) {
+      if (item.id) await applyOverpayFlag(item.id, guidelines, spot)
+    }
+  } catch {}
+
   // Re-fetch the full document to return — if the original id was deleted, find a surviving sibling
   let purchase = await prisma.purchase.findUnique({
     where: { id },
@@ -183,6 +198,10 @@ export async function PUT(
       })
     : [purchase]
 
+  // Overpay flags are admin-only — strip them for everyone else
+  if (session.user.role !== "ADMIN") {
+    return NextResponse.json({ ...stripOverpay(purchase), items: allItems.map(stripOverpay) })
+  }
   return NextResponse.json({ ...purchase, items: allItems })
 }
 

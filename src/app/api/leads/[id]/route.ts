@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { LeadSource, LeadChannel, LeadStatus } from "@/generated/prisma/client"
 import { deleteCalendarEvent } from "@/lib/google-calendar"
+import { stripOverpay } from "@/lib/overpay"
 
 export async function GET(
   request: Request,
@@ -42,6 +43,10 @@ export async function GET(
     return NextResponse.json({ error: "Lead not found" }, { status: 404 })
   }
 
+  // Overpay flags on purchases are admin-only — strip them for everyone else
+  if (session.user.role !== "ADMIN") {
+    return NextResponse.json({ ...lead, purchases: lead.purchases.map(stripOverpay) })
+  }
   return NextResponse.json(lead)
 }
 

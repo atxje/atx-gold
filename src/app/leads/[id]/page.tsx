@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar"
 import { LeadForm } from "@/components/lead-form"
 import { TextModal } from "@/components/text-modal"
 import { format } from "date-fns"
+import { formatPurchaseDate } from "@/lib/purchase-date"
 
 interface Lead {
   id: string
@@ -373,7 +374,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                         {purchase.purity ? ` (${purchase.purity})` : ""}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {format(new Date(purchase.purchaseDate), "MMM d, yyyy")}
+                        {formatPurchaseDate(purchase.purchaseDate)}
                       </div>
                     </div>
                     <div className="flex gap-2 ml-4">

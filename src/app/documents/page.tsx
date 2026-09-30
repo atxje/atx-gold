@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
+import { formatPurchaseDate, purchaseDateKey } from "@/lib/purchase-date"
 
 interface Invoice {
   id: string
@@ -266,16 +267,16 @@ export default function DocumentsPage() {
                         const seen = new Set<string>()
                         const rows: typeof purchases = []
                         for (const p of purchases) {
-                          const key = p.purchaseNumber || `${p.lead.id}_${p.purchaseDate.split("T")[0]}`
+                          const key = p.purchaseNumber || `${p.lead.id}_${purchaseDateKey(p.purchaseDate)}`
                           if (!seen.has(key)) {
                             rows.push(p)
                             seen.add(key)
                           }
                         }
                         return rows.map(p => {
-                          const key = p.purchaseNumber || `${p.lead.id}_${p.purchaseDate.split("T")[0]}`
+                          const key = p.purchaseNumber || `${p.lead.id}_${purchaseDateKey(p.purchaseDate)}`
                           const group = purchases.filter(x =>
-                            (x.purchaseNumber || `${x.lead.id}_${x.purchaseDate.split("T")[0]}`) === key
+                            (x.purchaseNumber || `${x.lead.id}_${purchaseDateKey(x.purchaseDate)}`) === key
                           )
                           const total = group.reduce((s, x) => s + x.pricePaid, 0)
                           const desc = group.length > 1
@@ -284,7 +285,7 @@ export default function DocumentsPage() {
                           return (
                             <tr key={p.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/purchases/${p.id}`)}>
                               <td className="px-6 py-4 text-sm font-semibold text-amber-600">{p.purchaseNumber || "—"}</td>
-                              <td className="px-6 py-4 text-sm text-gray-500">{format(new Date(p.purchaseDate), "MMM d, yyyy")}</td>
+                              <td className="px-6 py-4 text-sm text-gray-500">{formatPurchaseDate(p.purchaseDate)}</td>
                               <td className="px-6 py-4 text-sm font-medium text-gray-900">{p.lead.name}</td>
                               <td className="px-6 py-4 text-sm text-gray-600">{desc}</td>
                               <td className="px-6 py-4 text-sm font-bold text-amber-600 text-right">${total.toFixed(2)}</td>

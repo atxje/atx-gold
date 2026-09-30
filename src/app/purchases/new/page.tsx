@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { arrowNav } from "@/lib/table-nav"
+import { todayInputValue, purchaseDateKey } from "@/lib/purchase-date"
 
 interface DiamondData {
   shape: string
@@ -209,7 +210,7 @@ function NewPurchaseForm() {
   const [newLeadEmail, setNewLeadEmail] = useState("")
   const [newLeadSource, setNewLeadSource] = useState("ORGANIC")
   const [newLeadChannel, setNewLeadChannel] = useState("PHONE")
-  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0])
+  const [purchaseDate, setPurchaseDate] = useState(todayInputValue())
   const [ticketTotal, setTicketTotal] = useState("")
   const [notes, setNotes] = useState("")
   const [editPurchaseNumber, setEditPurchaseNumber] = useState("")
@@ -259,7 +260,7 @@ function NewPurchaseForm() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const purchase: any = await res.json()
           setSelectedLeadId(purchase.lead?.id || "")
-          setPurchaseDate(new Date(purchase.purchaseDate).toISOString().split("T")[0])
+          setPurchaseDate(purchaseDateKey(purchase.purchaseDate))
           setNotes(purchase.notes || "")
           setEditPurchaseNumber(purchase.purchaseNumber || "")
           // Parse payment

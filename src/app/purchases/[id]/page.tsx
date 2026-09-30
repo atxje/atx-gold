@@ -7,7 +7,7 @@ import { useRouter, useParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { BUSINESS } from "@/lib/business"
 import { arrowNav } from "@/lib/table-nav"
-import { format } from "date-fns"
+import { formatPurchaseDate, purchaseDateKey } from "@/lib/purchase-date"
 
 interface PurchaseItem {
   id: string
@@ -19,6 +19,9 @@ interface PurchaseItem {
   pricePerUnit: number | null
   grossProfit: number | null
   comp: number | null
+  overpayFlag?: boolean
+  overpayReason?: string | null
+  overpaySpotSnapshot?: number | null
   inventoryItem: { id: string; name: string; itemCode: string | null } | null
 }
 
@@ -85,7 +88,7 @@ export default function PurchaseDetailPage() {
 
   function startEdit() {
     if (!purchase) return
-    setEditDate(new Date(purchase.purchaseDate).toISOString().split("T")[0])
+    setEditDate(purchaseDateKey(purchase.purchaseDate))
     setEditNotes(purchase.notes || "")
     let payments: { method: string; amount: number }[] = []
     try { if (purchase.paymentMethod) payments = JSON.parse(purchase.paymentMethod) } catch {}
@@ -264,12 +267,29 @@ export default function PurchaseDetailPage() {
               <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
                 className="mt-1 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-amber-400 print:hidden" />
             ) : (
-              <p className="text-sm text-gray-500 mt-1">{format(new Date(purchase.purchaseDate), "MMMM d, yyyy")}</p>
+              <p className="text-sm text-gray-500 mt-1">{formatPurchaseDate(purchase.purchaseDate, "MMMM d, yyyy")}</p>
             )}
           </div>
         </div>
 
         <hr className="border-gray-300 mb-6" />
+
+        {/* Overpay warning — admins only; the API omits these fields for other roles */}
+        {session?.user?.role === "ADMIN" && purchase.items.some(i => i.overpayFlag) && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg print:hidden">
+            <div className="text-sm font-semibold text-red-800 mb-1">⚠ Exceeds buying guidelines</div>
+            <ul className="text-sm text-red-700 space-y-1">
+              {purchase.items.filter(i => i.overpayFlag).map(i => (
+                <li key={i.id}>
+                  <span className="font-medium">{i.description}:</span> {i.overpayReason}
+                  {i.overpaySpotSnapshot != null && (
+                    <span className="text-red-500"> (spot at save: ${i.overpaySpotSnapshot.toLocaleString("en-US", { minimumFractionDigits: 2 })})</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Purchased From */}
         <div className="mb-8">

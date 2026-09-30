@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { InventoryStatus } from "@/generated/prisma/client"
 import { recalcGrossProfitForInventoryItem } from "@/lib/compensation"
+import { applyOverpayFlagForInventoryItem, stripOverpay } from "@/lib/overpay"
 
 export async function GET(
   request: Request,
@@ -57,6 +58,10 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
+  // Overpay flags on purchases are admin-only — strip them for everyone else
+  if (session.user.role !== "ADMIN") {
+    return NextResponse.json({ ...item, purchases: item.purchases.map(stripOverpay) })
+  }
   return NextResponse.json(item)
 }
 
@@ -118,6 +123,7 @@ export async function PATCH(
   // Weight/cost/jewelry-metal may have changed → refresh linked purchases' gross profit
   if (totalWeight !== undefined || totalCost !== undefined || jewelryData) {
     await recalcGrossProfitForInventoryItem(id)
+    await applyOverpayFlagForInventoryItem(id)
   }
 
   const item = await prisma.inventoryItem.findUnique({

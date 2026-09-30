@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
+import { formatPurchaseDate } from "@/lib/purchase-date"
 
 interface DiamondDetails {
   shape: string | null; caratWeight: number | null; color: string | null; clarity: string | null
@@ -654,7 +655,7 @@ export default function InventoryItemPage() {
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => router.push(tx.docRoute)}>
                       <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                        {format(new Date(tx.date), "MMM d, yyyy")}
+                        {tx.type === "Purchase" ? formatPurchaseDate(tx.date) : format(new Date(tx.date), "MMM d, yyyy")}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeColors[tx.type]}`}>

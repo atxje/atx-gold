@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { formatPurchaseDate, purchaseMonthKey } from "@/lib/purchase-date"
 
 type Tab = "cashflow" | "purchases" | "sales" | "transfers" | "valuation"
 
@@ -147,9 +148,10 @@ function fmt(n: number) {
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Month of the UTC calendar day — matches the API's monthKey() and the
+// UTC-day date filters, so month buckets agree with displayed dates.
 function groupByMonth(dateStr: string) {
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  return purchaseMonthKey(dateStr)
 }
 
 function monthLabel(key: string) {
@@ -713,7 +715,7 @@ export default function ReportsPage() {
                         const total = items.reduce((s, p) => s + p.pricePaid, 0)
                         return (
                           <tr key={docNum} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm">{new Date(first.purchaseDate).toLocaleDateString()}</td>
+                            <td className="px-4 py-3 text-sm">{formatPurchaseDate(first.purchaseDate, "M/d/yyyy")}</td>
                             <td className="px-4 py-3 text-sm text-blue-600">
                               <a href={`/purchases/${first.id}`}>{first.purchaseNumber || "—"}</a>
                             </td>

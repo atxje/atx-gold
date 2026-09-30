@@ -52,6 +52,14 @@ const navigation: NavEntry[] = [
   { name: "Compensation", href: "/compensation" },
 ]
 
+// Admin-only settings sections; more entries will be added over time
+const settingsGroup: NavGroup = {
+  name: "Settings",
+  items: [
+    { name: "Buying Guidelines", href: "/settings/guidelines" },
+  ],
+}
+
 function DropdownMenu({ group, pathname }: { group: NavGroup; pathname: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -123,9 +131,12 @@ export function Navbar() {
   const { data: session } = useSession()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Employees only get their compensation report — hide the admin Reports link
+  // Employees only get their compensation report — hide the admin Reports link.
+  // Settings is admin-only.
   const isEmployee = !!session?.user?.role && session.user.role !== "ADMIN"
-  const navEntries = isEmployee ? navigation.filter(e => e.name !== "Reports") : navigation
+  const navEntries = isEmployee
+    ? navigation.filter(e => e.name !== "Reports")
+    : [...navigation, settingsGroup]
 
   return (
     <nav className="bg-white shadow">
@@ -194,7 +205,7 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="sm:hidden border-t border-gray-200">
           <div className="pt-2 pb-3 space-y-1">
-            {navigation.map(entry =>
+            {navEntries.map(entry =>
               isGroup(entry) ? (
                 <div key={entry.name}>
                   <div className="pl-4 pr-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">

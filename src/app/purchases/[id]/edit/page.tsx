@@ -4,7 +4,7 @@ import { useEffect, useState, use } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
-import { format } from "date-fns"
+import { purchaseDateKey } from "@/lib/purchase-date"
 
 interface Purchase {
   id: string
@@ -223,7 +223,7 @@ export default function EditPurchasePage({ params }: { params: Promise<{ id: str
                 name="purchaseDate"
                 type="date"
                 required
-                defaultValue={format(new Date(purchase.purchaseDate), "yyyy-MM-dd")}
+                defaultValue={purchaseDateKey(purchase.purchaseDate)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
             </div>

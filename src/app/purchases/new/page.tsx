@@ -777,6 +777,73 @@ function NewPurchaseForm() {
     if (payments.length === 0) { setError("Please select at least one payment method"); return }
     if (Math.abs(paymentDiff) > 0.01) { setError(`Payment total ($${paymentTotal.toFixed(2)}) must equal purchase total ($${grandTotal.toFixed(2)})`); return }
     setLoading(true)
+    // One purchase line as the API expects it, with its diamond/jewelry/watch
+    // details attached so everything is saved in a single request
+    const buildLine = (item: LineItem) => {
+      const cat = categories[item.category]
+      const isWatch = !!item.watchData
+      let baseDesc: string
+      let extras: string
+      if (item.watchData?.brand) {
+        const wd = item.watchData
+        const parts = [wd.brand, wd.caseMetal, wd.caseSizeMM, wd.referenceNumber, wd.description].filter(Boolean)
+        baseDesc = parts.join(" ") || "Watch"
+        extras = ""
+      } else if (item.jewelryData?.metal) {
+        const jd = item.jewelryData
+        const parts = [jd.metal, item.subcategory, jd.brand, jd.mainStone && jd.mainStone !== "None" && `w/ ${jd.mainStone}`].filter(Boolean)
+        baseDesc = item.description || parts.join(" ")
+        extras = ""
+      } else if (item.diamondData?.shape) {
+        const dd = item.diamondData
+        const parts = [dd.shape, dd.caratWeight && `${dd.caratWeight}ct`, dd.color, dd.clarity, dd.cutGrade].filter(Boolean)
+        baseDesc = item.description || parts.join(" ")
+        extras = [dd.lab && dd.certNumber && `${dd.lab} ${dd.certNumber}`].filter(Boolean).join(", ")
+      } else {
+        extras = [item.color && `Color: ${item.color}`, item.clarity && `Clarity: ${item.clarity}`, item.caratWeight && `Carat: ${item.caratWeight}ct`].filter(Boolean).join(", ")
+        baseDesc = item.description || `${item.subcategory} ${cat?.label || ""}`.trim()
+      }
+      const dd = item.diamondData
+      const jd = item.jewelryData
+      const wd = item.watchData
+      return {
+        description: extras ? `${baseDesc} (${extras})` : baseDesc,
+        metalType: cat?.metalType || "OTHER",
+        quantity: parseInt(item.quantity) || 0,
+        weight: item.weight || (isWatch ? "1" : ""),
+        weightUnit: cat?.weightUnit || "GRAM",
+        purity: item.subcategory,
+        pricePaid: item.pricePaid || (isWatch ? item.watchData?.totalCost : ""),
+        pricePerUnit: item.pricePerUnit || null,
+        category: cat?.label || item.category,
+        subcategory: item.subcategory,
+        ...(dd && { diamondData: {
+          shape: dd.shape || null, caratWeight: dd.caratWeight ? parseFloat(dd.caratWeight) : null,
+          color: dd.color || null, clarity: dd.clarity || null, lab: dd.lab || null,
+          certNumber: dd.certNumber || null, cutGrade: dd.cutGrade || null,
+          polish: dd.polish || null, symmetry: dd.symmetry || null,
+          fluorescence: dd.fluorescence || null, measurements: dd.measurements || null,
+          costPerCarat: dd.costPerCarat ? parseFloat(dd.costPerCarat) : null,
+          rapPrice: dd.rapPrice ? parseFloat(dd.rapPrice) : null,
+          rapDiscount: dd.rapDiscount ? parseFloat(dd.rapDiscount) : null,
+          notes: dd.notes || null,
+        }}),
+        ...(jd && { jewelryData: {
+          metal: jd.metal || null, brand: jd.brand || null,
+          mainStone: jd.mainStone || null,
+          costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
+          description: jd.description || null,
+        }}),
+        ...(wd && { watchData: {
+          brand: wd.brand || null, referenceNumber: wd.referenceNumber || null,
+          serialNumber: wd.serialNumber || null, caseMetal: wd.caseMetal || null,
+          caseSizeMM: wd.caseSizeMM || null,
+          box: wd.box || false, paperwork: wd.paperwork || false,
+          description: wd.description || null,
+        }}),
+      }
+    }
+
     try {
       if (editId) {
         // Edit mode
@@ -802,8 +869,19 @@ function NewPurchaseForm() {
           ...(showWatches ? watchItems.filter(i => !i.dbId) : []),
         ].filter(item => !isRowEmpty(item))
 
-        // PUT existing items + remove deleted items
-        if (existingItems.length > 0 || removedIds.length > 0) {
+        // Validate new rows before saving anything
+        for (const item of allNewItems) {
+          const isWatch = !!item.watchData
+          const editCat = item.category ? categories[item.category] : null
+          const editNeedsSub = editCat ? editCat.subcategories.length > 0 : true
+          if (!item.category || (!isWatch && ((!item.subcategory && editNeedsSub) || !item.weight || !item.pricePaid)) || (isWatch && !item.pricePaid)) {
+            const missing = [!item.category && "category", !isWatch && !item.subcategory && editNeedsSub && "type", !isWatch && !item.weight && "weight", !item.pricePaid && "price"].filter(Boolean).join(", ")
+            throw new Error(`Please fill in all required fields for new items (missing: ${missing})`)
+          }
+        }
+
+        // Edits, removals and new rows are saved in one request — all or nothing
+        if (existingItems.length > 0 || removedIds.length > 0 || allNewItems.length > 0) {
           const res = await fetch(`/api/purchases/${editId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -812,10 +890,9 @@ function NewPurchaseForm() {
               notes: notes || null,
               paymentMethod: paymentData,
               removeItemIds: removedIds.length > 0 ? removedIds : undefined,
+              newItems: allNewItems.length > 0 ? allNewItems.map(buildLine) : undefined,
               items: existingItems.map(item => {
-                const dd = item.diamondData
-                const jd = item.jewelryData
-                const wd = item.watchData
+                const line = buildLine(item)
                 return {
                   id: item.dbId,
                   description: item.description,
@@ -823,30 +900,9 @@ function NewPurchaseForm() {
                   weight: parseFloat(item.weight) || 0,
                   pricePerUnit: parseFloat(item.pricePerUnit) || null,
                   pricePaid: parseFloat(item.pricePaid) || 0,
-                  ...(dd && { diamondData: {
-                    shape: dd.shape || null, caratWeight: dd.caratWeight ? parseFloat(dd.caratWeight) : null,
-                    color: dd.color || null, clarity: dd.clarity || null, lab: dd.lab || null,
-                    certNumber: dd.certNumber || null, cutGrade: dd.cutGrade || null,
-                    polish: dd.polish || null, symmetry: dd.symmetry || null,
-                    fluorescence: dd.fluorescence || null, measurements: dd.measurements || null,
-                    costPerCarat: dd.costPerCarat ? parseFloat(dd.costPerCarat) : null,
-                    rapPrice: dd.rapPrice ? parseFloat(dd.rapPrice) : null,
-                    rapDiscount: dd.rapDiscount ? parseFloat(dd.rapDiscount) : null,
-                    notes: dd.notes || null,
-                  }}),
-                  ...(jd && { jewelryData: {
-                    metal: jd.metal || null, brand: jd.brand || null,
-                    mainStone: jd.mainStone || null,
-                    costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
-                    description: jd.description || null,
-                  }}),
-                  ...(wd && { watchData: {
-                    brand: wd.brand || null, referenceNumber: wd.referenceNumber || null,
-                    serialNumber: wd.serialNumber || null, caseMetal: wd.caseMetal || null,
-                    caseSizeMM: wd.caseSizeMM || null,
-                    box: wd.box || false, paperwork: wd.paperwork || false,
-                    description: wd.description || null,
-                  }}),
+                  diamondData: line.diamondData,
+                  jewelryData: line.jewelryData,
+                  watchData: line.watchData,
                 }
               }),
             }),
@@ -857,132 +913,11 @@ function NewPurchaseForm() {
           redirectId = putResult.id || editId
         }
 
-        // POST new items using the existing purchaseNumber and leadId
-        for (const item of allNewItems) {
-          const isWatch = !!item.watchData
-          const editCat = item.category ? categories[item.category] : null
-          const editNeedsSub = editCat ? editCat.subcategories.length > 0 : true
-          if (!item.category || (!isWatch && ((!item.subcategory && editNeedsSub) || !item.weight || !item.pricePaid)) || (isWatch && !item.pricePaid)) {
-            const missing = [!item.category && "category", !isWatch && !item.subcategory && editNeedsSub && "type", !isWatch && !item.weight && "weight", !item.pricePaid && "price"].filter(Boolean).join(", ")
-            throw new Error(`Please fill in all required fields for new items (missing: ${missing})`)
-          }
-          const cat = categories[item.category]
-          let baseDesc: string
-          let extras: string
-          if (item.watchData?.brand) {
-            const wd = item.watchData
-            const parts = [wd.brand, wd.caseMetal, wd.caseSizeMM, wd.referenceNumber, wd.description].filter(Boolean)
-            baseDesc = parts.join(" ") || "Watch"
-            extras = ""
-          } else if (item.jewelryData?.metal) {
-            const jd = item.jewelryData
-            const parts = [jd.metal, item.subcategory, jd.brand, jd.mainStone && jd.mainStone !== "None" && `w/ ${jd.mainStone}`].filter(Boolean)
-            baseDesc = item.description || parts.join(" ")
-            extras = ""
-          } else if (item.diamondData?.shape) {
-            const dd = item.diamondData
-            const parts = [dd.shape, dd.caratWeight && `${dd.caratWeight}ct`, dd.color, dd.clarity, dd.cutGrade].filter(Boolean)
-            baseDesc = item.description || parts.join(" ")
-            extras = [dd.lab && dd.certNumber && `${dd.lab} ${dd.certNumber}`].filter(Boolean).join(", ")
-          } else {
-            extras = [item.color && `Color: ${item.color}`, item.clarity && `Clarity: ${item.clarity}`, item.caratWeight && `Carat: ${item.caratWeight}ct`].filter(Boolean).join(", ")
-            baseDesc = item.description || `${item.subcategory} ${cat?.label || ""}`.trim()
-          }
-          const fullDesc = extras ? `${baseDesc} (${extras})` : baseDesc
-
-          const res: Response = await fetch("/api/purchases", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              purchaseNumber: editPurchaseNumber,
-              leadId: selectedLeadId,
-              description: fullDesc,
-              metalType: cat?.metalType || "OTHER",
-              weight: item.weight || (isWatch ? "1" : ""),
-              weightUnit: cat?.weightUnit || "GRAM",
-              purity: item.subcategory,
-              pricePaid: item.pricePaid || (isWatch ? item.watchData?.totalCost : ""),
-              pricePerUnit: item.pricePerUnit || null,
-              category: cat?.label || item.category,
-              subcategory: item.subcategory,
-              purchaseDate,
-              notes: notes || null,
-              paymentMethod: paymentData,
-            }),
-          })
-          if (!res.ok) throw new Error((await res.json()).error || "Failed to add new item")
-
-          // Save diamond/jewelry details if present
-          const created = await res.json()
-          if (item.diamondData && created.inventoryItemId) {
-            const dd = item.diamondData
-            await fetch("/api/diamonds", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                inventoryItemId: created.inventoryItemId,
-                shape: dd.shape || null, caratWeight: dd.caratWeight ? parseFloat(dd.caratWeight) : null,
-                color: dd.color || null, clarity: dd.clarity || null, lab: dd.lab || null,
-                certNumber: dd.certNumber || null, cutGrade: dd.cutGrade || null,
-                polish: dd.polish || null, symmetry: dd.symmetry || null,
-                fluorescence: dd.fluorescence || null, measurements: dd.measurements || null,
-                costPerCarat: dd.costPerCarat ? parseFloat(dd.costPerCarat) : null,
-                rapPrice: dd.rapPrice ? parseFloat(dd.rapPrice) : null,
-                rapDiscount: dd.rapDiscount ? parseFloat(dd.rapDiscount) : null,
-                notes: dd.notes || null,
-              }),
-            })
-          }
-          if (item.jewelryData && created.inventoryItemId) {
-            const jd = item.jewelryData
-            await fetch("/api/jewelry", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                inventoryItemId: created.inventoryItemId,
-                metal: jd.metal || null, brand: jd.brand || null,
-                mainStone: jd.mainStone || null,
-                costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
-                description: jd.description || null,
-              }),
-            })
-          }
-          if (item.watchData && created.inventoryItemId) {
-            const wd = item.watchData
-            await fetch("/api/watches", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                inventoryItemId: created.inventoryItemId,
-                brand: wd.brand || null,
-                referenceNumber: wd.referenceNumber || null,
-                serialNumber: wd.serialNumber || null,
-                caseMetal: wd.caseMetal || null,
-                caseSizeMM: wd.caseSizeMM || null,
-                box: wd.box || false,
-                paperwork: wd.paperwork || false,
-                description: wd.description || null,
-              }),
-            })
-          }
-        }
-
         router.push(`/purchases/${redirectId || editId}`)
         return
       }
 
-      let leadId = selectedLeadId
-
-      if (isNewLead) {
-        if (!newLeadName) throw new Error("Seller name is required")
-        const leadRes = await fetch("/api/leads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newLeadName, phone: newLeadPhone || null, email: newLeadEmail || null, source: newLeadSource, channel: newLeadChannel, status: "BOUGHT" }),
-        })
-        if (!leadRes.ok) throw new Error((await leadRes.json()).error || "Failed to create lead")
-        leadId = (await leadRes.json()).id
-      }
+      if (isNewLead && !newLeadName) throw new Error("Seller name is required")
 
       // Filter out empty rows (no weight and no price) and validate the rest
       const isRowFilled = (item: LineItem) => {
@@ -1008,141 +943,24 @@ function NewPurchaseForm() {
         ? payments.filter(p => p.amount).map(p => ({ method: p.method, amount: parseFloat(p.amount) }))
         : null
 
-      let sharedPurchaseNumber: string | null = null
-      let firstPurchaseId: string | null = null
-
-      for (const item of submitItems) {
-        const cat = categories[item.category]
-        let extras: string
-        let baseDesc: string
-        if (item.watchData?.brand) {
-          const wd = item.watchData
-          const parts = [wd.brand, wd.caseMetal, wd.caseSizeMM, wd.referenceNumber, wd.description].filter(Boolean)
-          baseDesc = parts.join(" ") || "Watch"
-          extras = ""
-        } else if (item.jewelryData?.metal) {
-          const jd = item.jewelryData
-          const parts = [
-            jd.metal,
-            item.subcategory,
-            jd.brand,
-            jd.mainStone && jd.mainStone !== "None" && `w/ ${jd.mainStone}`,
-          ].filter(Boolean)
-          baseDesc = item.description || parts.join(" ")
-          extras = ""
-        } else if (item.diamondData?.shape) {
-          const dd = item.diamondData
-          const parts = [
-            dd.shape,
-            dd.caratWeight && `${dd.caratWeight}ct`,
-            dd.color,
-            dd.clarity,
-            dd.cutGrade,
-          ].filter(Boolean)
-          baseDesc = item.description || parts.join(" ")
-          extras = [
-            dd.lab && dd.certNumber && `${dd.lab} ${dd.certNumber}`,
-          ].filter(Boolean).join(", ")
-        } else {
-          extras = [
-            item.color && `Color: ${item.color}`,
-            item.clarity && `Clarity: ${item.clarity}`,
-            item.caratWeight && `Carat: ${item.caratWeight}ct`,
-          ].filter(Boolean).join(", ")
-          baseDesc = item.description || `${item.subcategory} ${cat?.label || ""}`.trim()
-        }
-        const fullDesc = extras ? `${baseDesc} (${extras})` : baseDesc
-
-        const res: Response = await fetch("/api/purchases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            purchaseNumber: sharedPurchaseNumber,
-            leadId,
-            description: fullDesc,
-            metalType: cat?.metalType || "OTHER",
-            quantity: parseInt(item.quantity) || 0,
-            weight: item.weight,
-            weightUnit: cat?.weightUnit || "GRAM",
-            purity: item.subcategory,
-            pricePaid: item.pricePaid,
-            pricePerUnit: item.pricePerUnit || null,
-            category: cat?.label || item.category,
-            subcategory: item.subcategory,
-            purchaseDate,
-            notes: notes || null,
-            paymentMethod: paymentData,
-          }),
-        })
-        if (!res.ok) throw new Error((await res.json()).error || "Failed to record purchase")
-        const created = await res.json()
-        if (!sharedPurchaseNumber) sharedPurchaseNumber = created.purchaseNumber
-        if (!firstPurchaseId) firstPurchaseId = created.id
-
-        // Save diamond details if present
-        if (item.diamondData && created.inventoryItemId) {
-          const dd = item.diamondData
-          await fetch("/api/diamonds", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              inventoryItemId: created.inventoryItemId,
-              shape: dd.shape || null,
-              caratWeight: dd.caratWeight ? parseFloat(dd.caratWeight) : null,
-              color: dd.color || null,
-              clarity: dd.clarity || null,
-              lab: dd.lab || null,
-              certNumber: dd.certNumber || null,
-              cutGrade: dd.cutGrade || null,
-              polish: dd.polish || null,
-              symmetry: dd.symmetry || null,
-              fluorescence: dd.fluorescence || null,
-              measurements: dd.measurements || null,
-              costPerCarat: dd.costPerCarat ? parseFloat(dd.costPerCarat) : null,
-              rapPrice: dd.rapPrice ? parseFloat(dd.rapPrice) : null,
-              rapDiscount: dd.rapDiscount ? parseFloat(dd.rapDiscount) : null,
-              notes: dd.notes || null,
-            }),
-          })
-        }
-
-        // Save jewelry details if present
-        if (item.jewelryData && created.inventoryItemId) {
-          const jd = item.jewelryData
-          await fetch("/api/jewelry", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              inventoryItemId: created.inventoryItemId,
-              metal: jd.metal || null,
-              brand: jd.brand || null,
-              mainStone: jd.mainStone || null,
-              costPerGram: jd.costPerGram ? parseFloat(jd.costPerGram) : null,
-              description: jd.description || null,
-            }),
-          })
-        }
-
-        // Save watch details if present
-        if (item.watchData && created.inventoryItemId) {
-          const wd = item.watchData
-          await fetch("/api/watches", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              inventoryItemId: created.inventoryItemId,
-              brand: wd.brand || null,
-              referenceNumber: wd.referenceNumber || null,
-              serialNumber: wd.serialNumber || null,
-              caseMetal: wd.caseMetal || null,
-              caseSizeMM: wd.caseSizeMM || null,
-              box: wd.box || false,
-              paperwork: wd.paperwork || false,
-              description: wd.description || null,
-            }),
-          })
-        }
-      }
+      // Seller, every line, its details and the inventory update are saved in
+      // ONE request: if anything fails, nothing is saved and it's safe to retry
+      const res: Response = await fetch("/api/purchases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(isNewLead
+            ? { newLead: { name: newLeadName, phone: newLeadPhone || null, email: newLeadEmail || null, source: newLeadSource, channel: newLeadChannel } }
+            : { leadId: selectedLeadId }),
+          purchaseDate,
+          notes: notes || null,
+          paymentMethod: paymentData,
+          items: submitItems.map(buildLine),
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to record purchase")
+      const created = await res.json()
+      const firstPurchaseId: string | null = created.id || null
 
       router.push(firstPurchaseId ? `/purchases/${firstPurchaseId}` : `/documents?tab=purchases`)
     } catch (err) {

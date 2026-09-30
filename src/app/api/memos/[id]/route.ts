@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { TX_OPTIONS } from "@/lib/doc-numbers"
 
 export async function GET(
   request: Request,
@@ -15,7 +16,7 @@ export async function GET(
     where: { id },
     include: {
       items: {
-        include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true } } },
+        include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true, soldWeight: true } } },
       },
     },
   })
@@ -38,120 +39,133 @@ export async function PATCH(
   const memo = await prisma.memo.findUnique({ where: { id }, include: { items: true } })
   if (!memo) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // Status-only update (return/convert)
+  // Status-only update (return whole memo)
   if (body.status) {
-    if (body.status === "RETURNED" && memo.status === "ACTIVE") {
-      for (const item of memo.items) {
-        if (item.status === "ACTIVE") {
-          await prisma.inventoryItem.update({
-            where: { id: item.inventoryItemId },
-            data: { availableWeight: { increment: item.weight } },
-          })
+    const updated = await prisma.$transaction(async (tx) => {
+      if (body.status === "RETURNED" && memo.status === "ACTIVE") {
+        for (const item of memo.items) {
+          if (item.status === "ACTIVE") {
+            await tx.inventoryItem.update({
+              where: { id: item.inventoryItemId },
+              data: { availableWeight: { increment: item.weight } },
+            })
+            // Mark the line returned too, so it can't be returned (and its
+            // weight restored) a second time from the line-level buttons
+            await tx.memoItem.update({ where: { id: item.id }, data: { status: "RETURNED" } })
+          }
         }
       }
-    }
-    const updated = await prisma.memo.update({ where: { id }, data: { status: body.status } })
+      return tx.memo.update({ where: { id }, data: { status: body.status } })
+    }, TX_OPTIONS)
     return NextResponse.json(updated)
   }
 
   // Field edit update
   const { customerName, customerEmail, customerPhone, returnDate, notes, items, removeItemIds, newItems } = body
 
-  // Delete removed items and reverse inventory effects
-  if (removeItemIds?.length) {
-    for (const itemId of removeItemIds) {
-      const item = await prisma.memoItem.findUnique({ where: { id: itemId } })
-      if (!item) continue
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Delete removed items and reverse inventory effects
+      if (removeItemIds?.length) {
+        for (const itemId of removeItemIds) {
+          const item = await tx.memoItem.findUnique({ where: { id: itemId } })
+          if (!item || item.memoId !== id) continue
 
-      // Restore availableWeight for active items
-      if (item.status === "ACTIVE") {
-        await prisma.inventoryItem.update({
+          // Restore availableWeight for active items
+          if (item.status === "ACTIVE") {
+            await tx.inventoryItem.update({
+              where: { id: item.inventoryItemId },
+              data: { availableWeight: { increment: item.weight } },
+            })
+          }
+
+          await tx.memoItem.delete({ where: { id: itemId } })
+        }
+
+        // If no items remain (and none are being added), delete the memo
+        const remaining = await tx.memoItem.count({ where: { memoId: id } })
+        if (remaining === 0 && !newItems?.length) {
+          await tx.memo.delete({ where: { id } })
+          return { deleted: true as const }
+        }
+      }
+
+      for (const item of items ?? []) {
+        const existing = await tx.memoItem.findUnique({ where: { id: item.id } })
+        if (!existing || existing.memoId !== id) continue
+
+        const weightDelta = (item.weight ?? existing.weight) - existing.weight
+
+        await tx.memoItem.update({
+          where: { id: item.id },
+          data: {
+            description: item.description,
+            quantity: item.quantity ?? existing.quantity,
+            pricePerUnit: item.pricePerUnit,
+            totalValue: item.totalValue,
+            weight: item.weight ?? existing.weight,
+          },
+        })
+
+        // Memo holds weight: if an active line's weight changes, adjust availableWeight
+        if (weightDelta !== 0 && existing.status === "ACTIVE") {
+          await tx.inventoryItem.update({
+            where: { id: existing.inventoryItemId },
+            data: { availableWeight: { increment: -weightDelta } },
+          })
+        }
+      }
+
+      // Add new items to existing memo
+      for (const item of newItems ?? []) {
+        const invItem = await tx.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
+        if (!invItem) throw new Error(`Inventory item not found: ${item.inventoryItemId}`)
+
+        await tx.memoItem.create({
+          data: {
+            memoId: id,
+            inventoryItemId: item.inventoryItemId,
+            description: item.description,
+            quantity: item.quantity ?? 0,
+            weight: item.weight,
+            weightUnit: item.weightUnit || invItem.weightUnit,
+            pricePerUnit: item.pricePerUnit,
+            totalValue: item.totalValue,
+          },
+        })
+
+        await tx.inventoryItem.update({
           where: { id: item.inventoryItemId },
-          data: { availableWeight: { increment: item.weight } },
+          data: { availableWeight: { decrement: item.weight } },
         })
       }
 
-      await prisma.memoItem.delete({ where: { id: itemId } })
-    }
+      // Recalculate total from all current items
+      const allMemoItems = await tx.memoItem.findMany({ where: { memoId: id } })
+      const recalcTotal = allMemoItems.reduce((s, i) => s + i.totalValue, 0)
 
-    // If no items remain, delete the memo
-    const remaining = await prisma.memoItem.count({ where: { memoId: id } })
-    if (remaining === 0) {
-      await prisma.memo.delete({ where: { id } })
-      return NextResponse.json({ deleted: true })
-    }
-  }
-
-  if (items?.length) {
-    for (const item of items) {
-      const existing = await prisma.memoItem.findUnique({ where: { id: item.id } })
-      if (!existing) continue
-
-      const weightDelta = (item.weight ?? existing.weight) - existing.weight
-
-      await prisma.memoItem.update({
-        where: { id: item.id },
+      const updated = await tx.memo.update({
+        where: { id },
         data: {
-          description: item.description,
-          quantity: item.quantity ?? existing.quantity,
-          pricePerUnit: item.pricePerUnit,
-          totalValue: item.totalValue,
-          weight: item.weight ?? existing.weight,
+          customerName: customerName ?? memo.customerName,
+          customerEmail: customerEmail ?? memo.customerEmail,
+          customerPhone: customerPhone ?? memo.customerPhone,
+          returnDate: returnDate ? new Date(returnDate) : memo.returnDate,
+          notes: notes ?? memo.notes,
+          totalValue: recalcTotal,
         },
+        include: { items: { include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true, soldWeight: true } } } } },
       })
+      return { updated }
+    }, TX_OPTIONS)
 
-      // Sync inventory: memo holds weight, so if weight changes adjust availableWeight
-      if (weightDelta !== 0) {
-        await prisma.inventoryItem.update({
-          where: { id: existing.inventoryItemId },
-          data: { availableWeight: { increment: -weightDelta } },
-        })
-      }
-    }
+    if ("deleted" in result) return NextResponse.json({ deleted: true })
+    return NextResponse.json(result.updated)
+  } catch (error) {
+    console.error("Error updating memo:", error)
+    return NextResponse.json(
+      { error: "Failed to save memo changes — nothing was changed. Please try again." },
+      { status: 500 }
+    )
   }
-
-  // Add new items to existing memo
-  if (newItems?.length) {
-    for (const item of newItems) {
-      const invItem = await prisma.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
-      if (!invItem) continue
-
-      await prisma.memoItem.create({
-        data: {
-          memoId: id,
-          inventoryItemId: item.inventoryItemId,
-          description: item.description,
-          quantity: item.quantity ?? 0,
-          weight: item.weight,
-          weightUnit: item.weightUnit || invItem.weightUnit,
-          pricePerUnit: item.pricePerUnit,
-          totalValue: item.totalValue,
-        },
-      })
-
-      await prisma.inventoryItem.update({
-        where: { id: item.inventoryItemId },
-        data: { availableWeight: { decrement: item.weight } },
-      })
-    }
-  }
-
-  // Recalculate total from all current items
-  const allMemoItems = await prisma.memoItem.findMany({ where: { memoId: id } })
-  const recalcTotal = allMemoItems.reduce((s, i) => s + i.totalValue, 0)
-
-  const updated = await prisma.memo.update({
-    where: { id },
-    data: {
-      customerName: customerName ?? memo.customerName,
-      customerEmail: customerEmail ?? memo.customerEmail,
-      customerPhone: customerPhone ?? memo.customerPhone,
-      returnDate: returnDate ? new Date(returnDate) : memo.returnDate,
-      notes: notes ?? memo.notes,
-      totalValue: recalcTotal,
-    },
-    include: { items: { include: { inventoryItem: { select: { id: true, name: true, weightUnit: true, totalCost: true, totalWeight: true } } } } },
-  })
-
-  return NextResponse.json(updated)
 }

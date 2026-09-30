@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { MetalType, WeightUnit } from "@/generated/prisma/client"
+import { MetalType, LeadSource, LeadChannel } from "@/generated/prisma/client"
 import { recalcPurchaseGrossProfit } from "@/lib/compensation"
 import { parsePurchaseDate } from "@/lib/purchase-date"
 import { applyOverpayFlag, stripOverpay } from "@/lib/overpay"
+import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
+import { createPurchaseLine, PurchaseInputError, type PurchaseLineInput } from "@/lib/purchases"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -47,6 +49,13 @@ export async function GET(request: Request) {
   return NextResponse.json(isAdmin ? purchases : purchases.map(stripOverpay))
 }
 
+// POST /api/purchases — record a purchase document.
+//
+// Body: { leadId | newLead, purchaseDate, notes, paymentMethod, items: [...] }
+//   or the older single-line shape (the line's fields at the top level).
+// Pass purchaseNumber to add lines to an existing document; otherwise a new
+// number is issued. Everything — new lead, inventory, details, purchase rows,
+// lead status — is saved in ONE transaction: all of it or none of it.
 export async function POST(request: Request) {
   const session = await auth()
   if (!session?.user) {
@@ -55,176 +64,97 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const {
-      leadId,
-      description,
-      metalType,
-      weight,
-      weightUnit,
-      purity,
-      pricePaid,
-      pricePerUnit,
-      category,
-      subcategory,
-      purchaseDate,
-      notes,
-      paymentMethod,
-      purchaseNumber: providedPurchaseNumber,
-      quantity: rawQuantity,
-    } = body
-    const parsedQuantity = parseInt(rawQuantity) || 0
+    const { leadId: bodyLeadId, newLead, purchaseDate, notes, paymentMethod, purchaseNumber: providedNumber } = body
+    const lines: PurchaseLineInput[] = Array.isArray(body.items) ? body.items : [body]
 
-    if (!leadId || !description || !metalType || !weight || !pricePaid) {
-      return NextResponse.json(
-        { error: "Lead, description, metal type, weight, and price are required" },
-        { status: 400 }
-      )
+    if (!bodyLeadId && !newLead?.name) {
+      return NextResponse.json({ error: "Seller is required" }, { status: 400 })
     }
-
-    // Verify lead exists
-    const lead = await prisma.lead.findUnique({ where: { id: leadId } })
-    if (!lead) {
-      return NextResponse.json({ error: "Lead not found" }, { status: 404 })
+    if (lines.length === 0) {
+      return NextResponse.json({ error: "Add at least one item" }, { status: 400 })
     }
-
-    const parsedWeight = parseFloat(weight)
-    const parsedPrice = parseFloat(pricePaid)
-    const parsedWeightUnit = (weightUnit as WeightUnit) || WeightUnit.GRAM
-
-    // Find or create InventoryItem if category+subcategory provided
-    let inventoryItemId: string | null = null
-    let generatedItemCode: string | null = null
-    const effectiveSubcategory = subcategory || (metalType === "WATCH" ? "Watch" : null)
-    if (category && effectiveSubcategory) {
-      const isUniqueItem = metalType === "DIAMOND" || metalType === "JEWELRY" || metalType === "WATCH"
-
-      if (isUniqueItem) {
-        // Generate unique item code: D0001 for diamonds, J0001 for jewelry, W0001 for watches
-        const prefix = metalType === "DIAMOND" ? "D" : metalType === "WATCH" ? "W" : "J"
-        const lastCoded = await prisma.inventoryItem.findFirst({
-          where: { itemCode: { startsWith: prefix } },
-          orderBy: { itemCode: "desc" },
-          select: { itemCode: true },
-        })
-        const nextNum = lastCoded?.itemCode
-          ? parseInt(lastCoded.itemCode.slice(1)) + 1
-          : 1000
-        generatedItemCode = `${prefix}${String(nextNum).padStart(4, "0")}`
-
-        // Use item code as subcategory for uniqueness
-        const itemName = `${generatedItemCode} – ${effectiveSubcategory}`
-        const inventoryItem = await prisma.inventoryItem.create({
-          data: {
-            itemCode: generatedItemCode,
-            category,
-            subcategory: generatedItemCode,
-            name: itemName,
-            weightUnit: parsedWeightUnit,
-            totalWeight: parsedWeight,
-            availableWeight: parsedWeight,
-            totalCost: parsedPrice,
-            quantity: parsedQuantity,
-          },
-        })
-        inventoryItemId = inventoryItem.id
-      } else {
-        const itemName = `${subcategory} ${getCategoryLabel(category)}`
-        const inventoryItem = await prisma.inventoryItem.upsert({
-          where: { category_subcategory: { category, subcategory } },
-          update: {
-            totalWeight: { increment: parsedWeight },
-            availableWeight: { increment: parsedWeight },
-            totalCost: { increment: parsedPrice },
-            quantity: { increment: parsedQuantity },
-          },
-          create: {
-            category,
-            subcategory,
-            name: itemName,
-            weightUnit: parsedWeightUnit,
-            totalWeight: parsedWeight,
-            availableWeight: parsedWeight,
-            totalCost: parsedPrice,
-            quantity: parsedQuantity,
-          },
-        })
-        inventoryItemId = inventoryItem.id
+    for (const line of lines) {
+      if (!line?.description || !line?.metalType || !line?.weight || !line?.pricePaid) {
+        return NextResponse.json(
+          { error: "Description, metal type, weight, and price are required for every item" },
+          { status: 400 }
+        )
       }
     }
 
-    // Use provided purchase number (for multi-item batches) or auto-generate
-    let purchaseNumber = providedPurchaseNumber || null
-    if (!purchaseNumber) {
-      const last = await prisma.purchase.findFirst({
-        where: { purchaseNumber: { not: null } },
-        orderBy: { createdAt: "desc" },
-        select: { purchaseNumber: true },
-      })
-      const nextNum = last?.purchaseNumber
-        ? parseInt(last.purchaseNumber.replace("PUR-", "")) + 1
-        : 1
-      purchaseNumber = `PUR-${String(nextNum).padStart(4, "0")}`
-    }
+    const userId = session.user.id
+    const result = await prisma.$transaction(async (tx) => {
+      // Seller: existing lead or a new one created in the same transaction
+      let leadId: string
+      let leadStatus: string
+      if (bodyLeadId) {
+        const lead = await tx.lead.findUnique({ where: { id: bodyLeadId }, select: { id: true, status: true } })
+        if (!lead) throw new PurchaseInputError("Lead not found")
+        leadId = lead.id
+        leadStatus = lead.status
+      } else {
+        const lead = await tx.lead.create({
+          data: {
+            name: newLead.name,
+            phone: newLead.phone || null,
+            email: newLead.email || null,
+            source: (newLead.source as LeadSource) || "ORGANIC",
+            channel: (newLead.channel as LeadChannel) || "PHONE",
+            status: "BOUGHT",
+            createdById: userId,
+          },
+          select: { id: true, status: true },
+        })
+        leadId = lead.id
+        leadStatus = lead.status
+      }
 
-    const purchase = await prisma.purchase.create({
-      data: {
+      const purchaseNumber = providedNumber || (await nextPurchaseNumber(tx))
+      const header = {
         purchaseNumber,
         leadId,
-        userId: session.user.id,
-        description,
-        metalType: metalType as MetalType,
-        weight: parsedWeight,
-        weightUnit: parsedWeightUnit,
-        purity,
-        pricePaid: parsedPrice,
-        pricePerUnit: pricePerUnit ? parseFloat(pricePerUnit) : null,
-        quantity: parsedQuantity,
-        category: category || null,
-        subcategory: effectiveSubcategory || null,
-        inventoryItemId,
+        userId,
         purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : new Date(),
-        notes,
+        notes: notes || null,
         paymentMethod: paymentMethod ? JSON.stringify(paymentMethod) : null,
-      },
-      include: {
-        lead: {
-          select: { id: true, name: true, phone: true, email: true },
-        },
-      },
-    })
+      }
 
-    // Compute employee gross profit (jewelry gets recomputed once its metal is
-    // saved via /api/jewelry; scrap/coins are complete here)
-    await recalcPurchaseGrossProfit(purchase.id)
+      const created = []
+      for (const line of lines) created.push(await createPurchaseLine(tx, header, line))
 
-    // Overpay flag vs buying guidelines — informational, never blocks the save
-    await applyOverpayFlag(purchase.id)
+      if (leadStatus !== "BOUGHT") {
+        await tx.lead.update({ where: { id: leadId }, data: { status: "BOUGHT" } })
+      }
+      return { purchaseNumber, leadId, created }
+    }, TX_OPTIONS)
 
-    // Update lead status to BOUGHT if not already
-    if (lead.status !== "BOUGHT") {
-      await prisma.lead.update({
-        where: { id: leadId },
-        data: { status: "BOUGHT" },
-      })
+    // Informational numbers that need live spot prices — computed after the
+    // save is committed; a spot-price outage never blocks a purchase.
+    for (const c of result.created) {
+      await recalcPurchaseGrossProfit(c.id)
+      await applyOverpayFlag(c.id)
     }
 
-    const responsePurchase = session.user.role === "ADMIN" ? purchase : stripOverpay(purchase)
-    return NextResponse.json({ ...responsePurchase, itemCode: generatedItemCode })
+    const first = await prisma.purchase.findUnique({
+      where: { id: result.created[0].id },
+      include: { lead: { select: { id: true, name: true, phone: true, email: true } } },
+    })
+    const responsePurchase = first && session.user.role !== "ADMIN" ? stripOverpay(first) : first
+    return NextResponse.json({
+      ...responsePurchase,
+      itemCode: result.created[0].itemCode,
+      purchaseNumber: result.purchaseNumber,
+      leadId: result.leadId,
+      items: result.created,
+    })
   } catch (error) {
+    if (error instanceof PurchaseInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error("Error creating purchase:", error)
     return NextResponse.json(
-      { error: "Failed to create purchase" },
+      { error: "Failed to record purchase — nothing was saved. Please try again." },
       { status: 500 }
     )
   }
-}
-
-function getCategoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    GOLD_JEWELRY: "Gold Jewelry",
-    SILVER: "Silver",
-    COINS_SILVER: "Silver Coins/Bars",
-    COINS_GOLD: "Gold Coins/Bars",
-  }
-  return labels[category] || category
 }

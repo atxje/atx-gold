@@ -14,6 +14,7 @@ interface InventoryItem {
   availableWeight: number
   totalCost: number
   totalWeight: number
+  soldWeight?: number // on hand = totalWeight − soldWeight
   quantity: number
   itemCode?: string | null
   category?: string
@@ -528,7 +529,7 @@ function NewInvoiceContent() {
                 </div>
               )}
               {col.key === "costPerUnit" && (() => {
-                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                const cpu = item.costPerUnit || (inv && (inv.totalWeight - (inv.soldWeight ?? 0)) > 0 ? inv.totalCost / (inv.totalWeight - (inv.soldWeight ?? 0)) : 0)
                 return (
                   <span className="text-sm text-gray-500 whitespace-nowrap">
                     ${cpu.toFixed(2)}/{unit}
@@ -536,7 +537,7 @@ function NewInvoiceContent() {
                 )
               })()}
               {col.key === "totalCost" && (() => {
-                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                const cpu = item.costPerUnit || (inv && (inv.totalWeight - (inv.soldWeight ?? 0)) > 0 ? inv.totalCost / (inv.totalWeight - (inv.soldWeight ?? 0)) : 0)
                 const lineCost = cpu * (parseFloat(item.weight) || 0)
                 return (
                   <span className="text-sm text-gray-500 whitespace-nowrap">
@@ -770,7 +771,7 @@ function NewInvoiceContent() {
                 {!hideCost && (() => {
                   const totalCost = lineItems.reduce((s, item) => {
                     const inv = inventory.find(i => i.id === item.inventoryItemId)
-                    const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                    const cpu = item.costPerUnit || (inv && (inv.totalWeight - (inv.soldWeight ?? 0)) > 0 ? inv.totalCost / (inv.totalWeight - (inv.soldWeight ?? 0)) : 0)
                     return s + cpu * (parseFloat(item.weight) || 0)
                   }, 0)
                   const totalProfit = grandTotal - totalCost

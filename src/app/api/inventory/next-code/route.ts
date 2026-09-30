@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { peekItemCodeNumber } from "@/lib/doc-numbers"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -12,13 +13,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "prefix must be D, J, or W" }, { status: 400 })
   }
 
-  const last = await prisma.inventoryItem.findFirst({
-    where: { itemCode: { startsWith: prefix } },
-    orderBy: { itemCode: "desc" },
-    select: { itemCode: true },
-  })
-
-  const nextNum = last?.itemCode ? parseInt(last.itemCode.slice(1)) + 1 : 1000
+  // Preview only — the real code is assigned when the purchase is saved
+  const nextNum = await peekItemCodeNumber(prisma, prefix as "D" | "J" | "W")
 
   return NextResponse.json({ nextNum })
 }

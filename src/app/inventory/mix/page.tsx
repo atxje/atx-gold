@@ -13,6 +13,7 @@ interface InventoryItem {
   subcategory: string
   weightUnit: string
   totalWeight: number
+  soldWeight?: number // on hand = totalWeight − soldWeight
   availableWeight: number
   totalCost: number
 }
@@ -78,7 +79,7 @@ function MixContent() {
         const rows = preselectedIds.map(id => {
           const item = inv.find((x: InventoryItem) => x.id === id)
           if (!item) return newRow()
-          const avgCpu = item.totalWeight > 0 ? item.totalCost / item.totalWeight : 0
+          const avgCpu = (item.totalWeight - (item.soldWeight ?? 0)) > 0 ? item.totalCost / (item.totalWeight - (item.soldWeight ?? 0)) : 0
           const w = item.availableWeight
           return { id: rowCounter++, inventoryItemId: id, weight: w.toFixed(3), costPerUnit: avgCpu.toFixed(4), totalCost: (avgCpu * w).toFixed(2), lastEdited: "costPerUnit" as const }
         })
@@ -92,7 +93,7 @@ function MixContent() {
     setSources(prev => prev.map(r => {
       if (r.id !== rowId) return r
       if (!item) return { ...r, inventoryItemId: "", weight: "", costPerUnit: "", totalCost: "" }
-      const avgCpu = item.totalWeight > 0 ? item.totalCost / item.totalWeight : 0
+      const avgCpu = (item.totalWeight - (item.soldWeight ?? 0)) > 0 ? item.totalCost / (item.totalWeight - (item.soldWeight ?? 0)) : 0
       const w = item.availableWeight
       return {
         ...r,
@@ -111,7 +112,7 @@ function MixContent() {
       if (sources.some(r => r.inventoryItemId === invId)) continue
       const item = inventory.find(i => i.id === invId)
       if (!item) continue
-      const avgCpu = item.totalWeight > 0 ? item.totalCost / item.totalWeight : 0
+      const avgCpu = (item.totalWeight - (item.soldWeight ?? 0)) > 0 ? item.totalCost / (item.totalWeight - (item.soldWeight ?? 0)) : 0
       const w = item.availableWeight
       newRows.push({
         id: rowCounter++,
@@ -393,7 +394,7 @@ function MixContent() {
                   {destItemId && (() => {
                     const item = inventory.find(i => i.id === destItemId)!
                     const unit = unitLabels[item.weightUnit] || "g"
-                    const avgCpu = item.totalWeight > 0 ? item.totalCost / item.totalWeight : 0
+                    const avgCpu = (item.totalWeight - (item.soldWeight ?? 0)) > 0 ? item.totalCost / (item.totalWeight - (item.soldWeight ?? 0)) : 0
                     const newTotalWeight = item.totalWeight + totalWeight
                     const newTotalCost = item.totalCost + totalCost
                     const newAvgCpu = newTotalWeight > 0 ? newTotalCost / newTotalWeight : 0

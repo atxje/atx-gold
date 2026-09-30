@@ -84,7 +84,7 @@ export default function MemoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "RETURNED" }),
       })
-      if (res.ok) setMemo({ ...memo, status: "RETURNED" })
+      if (res.ok) setMemo({ ...memo, status: "RETURNED", items: memo.items.map(i => i.status === "ACTIVE" ? { ...i, status: "RETURNED" as MemoItem["status"] } : i) })
     } finally {
       setUpdating(false)
     }

@@ -5,6 +5,15 @@ import { recalcPurchaseGrossProfit, COMP_RATE } from "@/lib/compensation"
 import { getSpotPrices } from "@/lib/spot"
 import { parsePurchaseDate } from "@/lib/purchase-date"
 import { applyOverpayFlag, loadGuidelines, stripOverpay } from "@/lib/overpay"
+import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
+import {
+  createPurchaseLine,
+  pickDiamond,
+  pickJewelry,
+  pickWatch,
+  PurchaseInputError,
+  type PurchaseLineInput,
+} from "@/lib/purchases"
 
 export async function GET(
   request: Request,
@@ -56,119 +65,155 @@ export async function PUT(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const { purchaseDate, notes, paymentMethod, items, removeItemIds } = await request.json()
+  const { purchaseDate, notes, paymentMethod, items, removeItemIds, newItems } = await request.json()
 
   const paymentMethodJson = paymentMethod?.length ? JSON.stringify(paymentMethod) : null
 
   // Grab purchaseNumber before any deletions so we can find surviving siblings
-  const original = await prisma.purchase.findUnique({ where: { id }, select: { purchaseNumber: true } })
-  const purchaseNumber = original?.purchaseNumber
+  const original = await prisma.purchase.findUnique({
+    where: { id },
+    select: { purchaseNumber: true, leadId: true },
+  })
+  if (!original) return NextResponse.json({ error: "Purchase not found" }, { status: 404 })
+  let purchaseNumber = original.purchaseNumber
 
-  // Delete removed items and reverse their inventory effects
-  if (removeItemIds?.length) {
-    for (const removeId of removeItemIds) {
-      const purchase = await prisma.purchase.findUnique({ where: { id: removeId } })
-      if (!purchase) continue
+  const editedIds: string[] = []
 
-      if (purchase.inventoryItemId) {
-        await prisma.inventoryItem.update({
-          where: { id: purchase.inventoryItemId },
-          data: {
-            totalWeight: { decrement: purchase.weight },
-            availableWeight: { decrement: purchase.weight },
-            totalCost: { decrement: purchase.pricePaid },
-          },
-        })
+  // Removals, edits and added lines are saved together: all or nothing
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Delete removed items and reverse their inventory effects
+      for (const removeId of removeItemIds ?? []) {
+        const purchase = await tx.purchase.findUnique({ where: { id: removeId } })
+        if (!purchase) continue
+
+        if (purchase.inventoryItemId) {
+          await tx.inventoryItem.update({
+            where: { id: purchase.inventoryItemId },
+            data: {
+              totalWeight: { decrement: purchase.weight },
+              availableWeight: { decrement: purchase.weight },
+              totalCost: { decrement: purchase.pricePaid },
+              ...(purchase.quantity > 0 && { quantity: { decrement: purchase.quantity } }),
+            },
+          })
+        }
+
+        await tx.purchase.delete({ where: { id: removeId } })
       }
 
-      await prisma.purchase.delete({ where: { id: removeId } })
+      for (const item of items ?? []) {
+        const existing = await tx.purchase.findUnique({ where: { id: item.id } })
+        if (!existing) continue
+        editedIds.push(existing.id)
+
+        const weightDelta = item.weight - existing.weight
+        const priceDelta = item.pricePaid - existing.pricePaid
+        const qtyDelta = (item.quantity ?? 0) - (existing.quantity ?? 0)
+
+        await tx.purchase.update({
+          where: { id: item.id },
+          data: {
+            description: item.description,
+            quantity: item.quantity ?? 0,
+            weight: item.weight,
+            pricePerUnit: item.pricePerUnit ?? null,
+            pricePaid: item.pricePaid,
+            purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : undefined,
+            notes: notes ?? null,
+            paymentMethod: paymentMethodJson,
+          },
+        })
+
+        // Sync inventory if weight, price, or quantity changed
+        if (existing.inventoryItemId && (weightDelta !== 0 || priceDelta !== 0 || qtyDelta !== 0)) {
+          await tx.inventoryItem.update({
+            where: { id: existing.inventoryItemId },
+            data: {
+              ...(weightDelta !== 0 && {
+                totalWeight: { increment: weightDelta },
+                availableWeight: { increment: weightDelta },
+              }),
+              ...(priceDelta !== 0 && {
+                totalCost: { increment: priceDelta },
+              }),
+              ...(qtyDelta !== 0 && {
+                quantity: { increment: qtyDelta },
+              }),
+            },
+          })
+        }
+
+        if (item.diamondData && existing.inventoryItemId) {
+          const d = pickDiamond(item.diamondData)
+          await tx.diamondDetails.upsert({
+            where: { inventoryItemId: existing.inventoryItemId },
+            update: d,
+            create: { inventoryItemId: existing.inventoryItemId, ...d },
+          })
+        }
+        if (item.jewelryData && existing.inventoryItemId) {
+          const d = pickJewelry(item.jewelryData)
+          await tx.jewelryDetails.upsert({
+            where: { inventoryItemId: existing.inventoryItemId },
+            update: d,
+            create: { inventoryItemId: existing.inventoryItemId, ...d },
+          })
+        }
+        if (item.watchData && existing.inventoryItemId) {
+          const d = pickWatch(item.watchData)
+          await tx.watchDetails.upsert({
+            where: { inventoryItemId: existing.inventoryItemId },
+            update: d,
+            create: { inventoryItemId: existing.inventoryItemId, ...d },
+          })
+        }
+      }
+
+      // New lines added while editing join the same purchase document
+      if (newItems?.length) {
+        const number = purchaseNumber || (await nextPurchaseNumber(tx))
+        if (!purchaseNumber && !(removeItemIds ?? []).includes(id)) {
+          // Legacy row without a number: give the whole document one now
+          await tx.purchase.update({ where: { id }, data: { purchaseNumber: number } })
+        }
+        purchaseNumber = number
+        const header = {
+          purchaseNumber: number,
+          leadId: original.leadId,
+          userId: session.user.id,
+          purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : new Date(),
+          notes: notes || null,
+          paymentMethod: paymentMethodJson,
+        }
+        for (const line of newItems as PurchaseLineInput[]) {
+          const created = await createPurchaseLine(tx, header, line)
+          editedIds.push(created.id)
+        }
+      }
+    }, TX_OPTIONS)
+  } catch (error) {
+    if (error instanceof PurchaseInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
     }
-  }
-
-  for (const item of items ?? []) {
-    const existing = await prisma.purchase.findUnique({ where: { id: item.id } })
-    if (!existing) continue
-
-    const weightDelta = item.weight - existing.weight
-    const priceDelta = item.pricePaid - existing.pricePaid
-    const qtyDelta = (item.quantity ?? 0) - (existing.quantity ?? 0)
-
-    await prisma.purchase.update({
-      where: { id: item.id },
-      data: {
-        description: item.description,
-        quantity: item.quantity ?? 0,
-        weight: item.weight,
-        pricePerUnit: item.pricePerUnit ?? null,
-        pricePaid: item.pricePaid,
-        purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : undefined,
-        notes: notes ?? null,
-        paymentMethod: paymentMethodJson,
-      },
-    })
-
-    // Sync inventory if weight, price, or quantity changed
-    if (existing.inventoryItemId && (weightDelta !== 0 || priceDelta !== 0 || qtyDelta !== 0)) {
-      await prisma.inventoryItem.update({
-        where: { id: existing.inventoryItemId },
-        data: {
-          ...(weightDelta !== 0 && {
-            totalWeight: { increment: weightDelta },
-            availableWeight: { increment: weightDelta },
-          }),
-          ...(priceDelta !== 0 && {
-            totalCost: { increment: priceDelta },
-          }),
-          ...(qtyDelta !== 0 && {
-            quantity: { increment: qtyDelta },
-          }),
-        },
-      })
-    }
-
-    // Update diamond details if present
-    if (item.diamondData && existing.inventoryItemId) {
-      await prisma.diamondDetails.upsert({
-        where: { inventoryItemId: existing.inventoryItemId },
-        update: item.diamondData,
-        create: { inventoryItemId: existing.inventoryItemId, ...item.diamondData },
-      })
-    }
-
-    // Update jewelry details if present
-    if (item.jewelryData && existing.inventoryItemId) {
-      await prisma.jewelryDetails.upsert({
-        where: { inventoryItemId: existing.inventoryItemId },
-        update: item.jewelryData,
-        create: { inventoryItemId: existing.inventoryItemId, ...item.jewelryData },
-      })
-    }
-
-    // Update watch details if present
-    if (item.watchData && existing.inventoryItemId) {
-      await prisma.watchDetails.upsert({
-        where: { inventoryItemId: existing.inventoryItemId },
-        update: item.watchData,
-        create: { inventoryItemId: existing.inventoryItemId, ...item.watchData },
-      })
-    }
+    console.error("Error updating purchase:", error)
+    return NextResponse.json(
+      { error: "Failed to save changes — nothing was changed. Please try again." },
+      { status: 500 }
+    )
   }
 
   // Recompute gross profit on every edited item (weight/price may have changed)
   try {
     const spot = await getSpotPrices()
-    for (const item of items ?? []) {
-      if (item.id) await recalcPurchaseGrossProfit(item.id, spot)
-    }
+    for (const pid of editedIds) await recalcPurchaseGrossProfit(pid, spot)
   } catch {}
 
   // Recompute overpay flags — informational, never blocks the save
   try {
     const spot = await getSpotPrices()
     const guidelines = await loadGuidelines()
-    for (const item of items ?? []) {
-      if (item.id) await applyOverpayFlag(item.id, guidelines, spot)
-    }
+    for (const pid of editedIds) await applyOverpayFlag(pid, guidelines, spot)
   } catch {}
 
   // Re-fetch the full document to return — if the original id was deleted, find a surviving sibling

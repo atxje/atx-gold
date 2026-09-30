@@ -14,6 +14,7 @@ interface InventoryItem {
   availableWeight: number
   totalCost: number
   totalWeight: number
+  soldWeight?: number // on hand = totalWeight − soldWeight
   quantity: number
   itemCode?: string | null
   category?: string
@@ -142,13 +143,15 @@ function NewMemoContent() {
           setReturnDate(new Date(memo.returnDate).toISOString().split("T")[0])
           setNotes(memo.notes || "")
           setMemoNumber(memo.memoNumber)
-          const rows: LineItem[] = memo.items.map((item: { id: string; inventoryItemId: string; description: string; quantity?: number; weight: number; pricePerUnit: number; totalValue: number; inventoryItem?: { totalCost: number; totalWeight: number } }, i: number) => {
+          const rows: LineItem[] = memo.items.map((item: { id: string; inventoryItemId: string; description: string; quantity?: number; weight: number; pricePerUnit: number; totalValue: number; inventoryItem?: { totalCost: number; totalWeight: number; soldWeight?: number } }, i: number) => {
             const invFromMemo = item.inventoryItem
             const invFromList = inv.find(x => x.id === item.inventoryItemId)
-            const cpu = invFromMemo && invFromMemo.totalWeight > 0
-              ? invFromMemo.totalCost / invFromMemo.totalWeight
-              : invFromList && invFromList.totalWeight > 0
-                ? invFromList.totalCost / invFromList.totalWeight
+            // Average cost of what's still on hand (sold weight has already left totalCost)
+            const onHand = (x?: { totalWeight: number; soldWeight?: number }) => x ? x.totalWeight - (x.soldWeight ?? 0) : 0
+            const cpu = invFromMemo && onHand(invFromMemo) > 0
+              ? invFromMemo.totalCost / onHand(invFromMemo)
+              : invFromList && onHand(invFromList) > 0
+                ? invFromList.totalCost / onHand(invFromList)
                 : 0
             const section: "regular" | "diamond" | "jewelry" = invFromList?.diamondDetails ? "diamond" : invFromList?.jewelryDetails ? "jewelry" : "regular"
             return {
@@ -495,7 +498,7 @@ function NewMemoContent() {
                 </div>
               )}
               {col.key === "costPerUnit" && (() => {
-                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                const cpu = item.costPerUnit || (inv && (inv.totalWeight - (inv.soldWeight ?? 0)) > 0 ? inv.totalCost / (inv.totalWeight - (inv.soldWeight ?? 0)) : 0)
                 return (
                   <span className="text-sm text-gray-500 whitespace-nowrap">
                     ${cpu.toFixed(2)}/{unit}
@@ -503,7 +506,7 @@ function NewMemoContent() {
                 )
               })()}
               {col.key === "totalCost" && (() => {
-                const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                const cpu = item.costPerUnit || (inv && (inv.totalWeight - (inv.soldWeight ?? 0)) > 0 ? inv.totalCost / (inv.totalWeight - (inv.soldWeight ?? 0)) : 0)
                 const lineCost = cpu * (parseFloat(item.weight) || 0)
                 return (
                   <span className="text-sm text-gray-500 whitespace-nowrap">
@@ -730,7 +733,7 @@ function NewMemoContent() {
                 {!hideCost && (() => {
                   const totalCost = lineItems.reduce((s, item) => {
                     const inv = inventory.find(i => i.id === item.inventoryItemId)
-                    const cpu = item.costPerUnit || (inv && inv.totalWeight > 0 ? inv.totalCost / inv.totalWeight : 0)
+                    const cpu = item.costPerUnit || (inv && (inv.totalWeight - (inv.soldWeight ?? 0)) > 0 ? inv.totalCost / (inv.totalWeight - (inv.soldWeight ?? 0)) : 0)
                     return s + cpu * (parseFloat(item.weight) || 0)
                   }, 0)
                   const totalProfit = grandTotal - totalCost

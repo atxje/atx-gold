@@ -6,6 +6,7 @@ import { recalcPurchaseGrossProfit } from "@/lib/compensation"
 import { parsePurchaseDate } from "@/lib/purchase-date"
 import { applyOverpayFlag, stripOverpay } from "@/lib/overpay"
 import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
+import { parseSellerFields } from "@/lib/seller-fields"
 import { createPurchaseLine, PurchaseInputError, type PurchaseLineInput } from "@/lib/purchases"
 
 export async function GET(request: Request) {
@@ -65,10 +66,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { leadId: bodyLeadId, newLead, purchaseDate, notes, paymentMethod, purchaseNumber: providedNumber, seller } = body
-    // Seller address / DL# for the bill of sale (optional; blank clears it)
-    const sellerDetails = seller
-      ? { address: (seller.address || "").trim() || null, idNumber: (seller.idNumber || "").trim() || null }
-      : null
+    // Seller contact details (address, DL#, phone, email, source, channel)
+    const sellerDetails = parseSellerFields(seller)
     const lines: PurchaseLineInput[] = Array.isArray(body.items) ? body.items : [body]
 
     if (!bodyLeadId && !newLead?.name) {

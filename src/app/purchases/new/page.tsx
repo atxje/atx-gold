@@ -103,6 +103,8 @@ interface Lead {
   email: string | null
   address?: string | null
   idNumber?: string | null
+  source?: string
+  channel?: string
 }
 
 const PAYMENT_METHODS = ["Cash", "Check", "Zelle / Venmo", "Bank Transfer"]
@@ -245,14 +247,23 @@ function NewPurchaseForm() {
   useEffect(() => {
     if (isNewLead) return
     if (scanOverride.current) {
+      const matched = leads.find(l => l.id === selectedLeadId)
       setSellerAddress(scanOverride.current.address)
       setSellerIdNumber(scanOverride.current.idNumber)
+      setNewLeadPhone(matched?.phone || "")
+      setNewLeadEmail(matched?.email || "")
+      setNewLeadSource(matched?.source || "ORGANIC")
+      setNewLeadChannel(matched?.channel || "PHONE")
       scanOverride.current = null
       return
     }
     const lead = leads.find(l => l.id === selectedLeadId)
     setSellerAddress(lead?.address || "")
     setSellerIdNumber(lead?.idNumber || "")
+    setNewLeadPhone(lead?.phone || "")
+    setNewLeadEmail(lead?.email || "")
+    setNewLeadSource(lead?.source || "ORGANIC")
+    setNewLeadChannel(lead?.channel || "PHONE")
   }, [selectedLeadId, leads, isNewLead])
 
   // Fill the seller section from a scanned ID. Matches an existing seller by
@@ -955,7 +966,7 @@ function NewPurchaseForm() {
               notes: notes || null,
               paymentMethod: paymentData,
               removeItemIds: removedIds.length > 0 ? removedIds : undefined,
-              seller: { address: sellerAddress, idNumber: sellerIdNumber },
+              seller: { address: sellerAddress, idNumber: sellerIdNumber, phone: newLeadPhone, email: newLeadEmail, source: newLeadSource, channel: newLeadChannel },
               newItems: allNewItems.length > 0 ? allNewItems.map(buildLine) : undefined,
               items: existingItems.map(item => {
                 const line = buildLine(item)
@@ -1018,7 +1029,7 @@ function NewPurchaseForm() {
           ...(isNewLead
             ? { newLead: { name: newLeadName, phone: newLeadPhone || null, email: newLeadEmail || null, source: newLeadSource, channel: newLeadChannel } }
             : { leadId: selectedLeadId }),
-          seller: { address: sellerAddress, idNumber: sellerIdNumber },
+          seller: { address: sellerAddress, idNumber: sellerIdNumber, phone: newLeadPhone, email: newLeadEmail, source: newLeadSource, channel: newLeadChannel },
           purchaseDate,
           notes: notes || null,
           paymentMethod: paymentData,
@@ -1059,7 +1070,11 @@ function NewPurchaseForm() {
                 className={`px-4 py-1.5 rounded text-sm font-medium ${!isNewLead ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
                 Existing Lead
               </button>
-              <button type="button" onClick={() => { setIsNewLead(true); setSelectedLeadId("") }}
+              <button type="button" onClick={() => {
+                  setIsNewLead(true); setSelectedLeadId("")
+                  setNewLeadPhone(""); setNewLeadEmail(""); setSellerAddress(""); setSellerIdNumber("")
+                  setNewLeadSource("ORGANIC"); setNewLeadChannel("PHONE")
+                }}
                 className={`px-4 py-1.5 rounded text-sm font-medium ${isNewLead ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
                 New Lead
               </button>
@@ -1071,80 +1086,68 @@ function NewPurchaseForm() {
               </div>
             )}
 
-            {!isNewLead ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Seller (Lead) *</label>
-                  <select required value={selectedLeadId} onChange={e => setSelectedLeadId(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <option value="">Select a lead</option>
-                    {leads.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}{l.phone ? ` (${l.phone})` : l.email ? ` (${l.email})` : ""}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
-                  <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Ticket Total</label>
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-gray-400 text-sm">$</span>
-                    <input type="number" step="0.01" placeholder="0.00" value={ticketTotal}
-                      onChange={e => setTicketTotal(e.target.value)}
-                      className="block w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-right" />
-                  </div>
+            {/* Same seller fields for an existing or a new seller; for an existing
+                seller they're filled from the record and saved back on submit */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="col-span-2">
+                {!isNewLead ? (
+                  <>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Seller (Lead) *</label>
+                    <select required value={selectedLeadId} onChange={e => setSelectedLeadId(e.target.value)}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                      <option value="">Select a lead</option>
+                      {leads.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}{l.phone ? ` (${l.phone})` : l.email ? ` (${l.email})` : ""}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Name *</label>
+                    <input value={newLeadName} onChange={e => setNewLeadName(e.target.value)} required={isNewLead}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                  </>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
+                <input type="tel" value={newLeadPhone} onChange={e => setNewLeadPhone(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                <input type="email" value={newLeadEmail} onChange={e => setNewLeadEmail(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Source</label>
+                <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                  {sources.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Channel</label>
+                <select value={newLeadChannel} onChange={e => setNewLeadChannel(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                  {channels.map(c => <option key={c} value={c}>{c === "ONLINE_FORM" ? "Online Form" : c.replace("_", " ").charAt(0) + c.replace("_", " ").slice(1).toLowerCase()}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
+                <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Ticket Total</label>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-gray-400 text-sm">$</span>
+                  <input type="number" step="0.01" placeholder="0.00" value={ticketTotal}
+                    onChange={e => setTicketTotal(e.target.value)}
+                    className="block w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-right" />
                 </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Name *</label>
-                  <input value={newLeadName} onChange={e => setNewLeadName(e.target.value)} required={isNewLead}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
-                  <input type="tel" value={newLeadPhone} onChange={e => setNewLeadPhone(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-                  <input type="email" value={newLeadEmail} onChange={e => setNewLeadEmail(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Source</label>
-                  <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    {sources.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Channel</label>
-                  <select value={newLeadChannel} onChange={e => setNewLeadChannel(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    {channels.map(c => <option key={c} value={c}>{c === "ONLINE_FORM" ? "Online Form" : c.replace("_", " ").charAt(0) + c.replace("_", " ").slice(1).toLowerCase()}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
-                  <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Ticket Total</label>
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-gray-400 text-sm">$</span>
-                    <input type="number" step="0.01" placeholder="0.00" value={ticketTotal}
-                      onChange={e => setTicketTotal(e.target.value)}
-                      className="block w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-right" />
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
               <div className="col-span-2 md:col-span-3">
                 <label className="block text-xs font-medium text-gray-500 mb-1">Seller Address</label>

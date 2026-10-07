@@ -6,6 +6,7 @@ import { getSpotPrices } from "@/lib/spot"
 import { parsePurchaseDate } from "@/lib/purchase-date"
 import { applyOverpayFlag, loadGuidelines, stripOverpay } from "@/lib/overpay"
 import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
+import { parseSellerFields } from "@/lib/seller-fields"
 import {
   createPurchaseLine,
   pickDiamond,
@@ -83,14 +84,9 @@ export async function PUT(
   try {
     await prisma.$transaction(async (tx) => {
       // Seller address / DL# for the bill of sale
-      if (seller) {
-        await tx.lead.update({
-          where: { id: original.leadId },
-          data: {
-            address: (seller.address || "").trim() || null,
-            idNumber: (seller.idNumber || "").trim() || null,
-          },
-        })
+      const sellerDetails = parseSellerFields(seller)
+      if (sellerDetails) {
+        await tx.lead.update({ where: { id: original.leadId }, data: sellerDetails })
       }
 
       // Delete removed items and reverse their inventory effects

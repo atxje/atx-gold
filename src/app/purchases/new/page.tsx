@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 import { arrowNav } from "@/lib/table-nav"
 import { todayInputValue, purchaseDateKey } from "@/lib/purchase-date"
 
@@ -216,6 +217,9 @@ function NewPurchaseForm() {
   const [sellerAddress, setSellerAddress] = useState("")
   const [sellerIdNumber, setSellerIdNumber] = useState("")
   const printAfterSave = useRef(false)
+  const [scanNotice, setScanNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null)
+  // Values from a just-scanned ID win over what's on file for the seller
+  const scanOverride = useRef<{ address: string; idNumber: string } | null>(null)
   const [purchaseDate, setPurchaseDate] = useState(todayInputValue())
   const [ticketTotal, setTicketTotal] = useState("")
   const [notes, setNotes] = useState("")
@@ -240,10 +244,57 @@ function NewPurchaseForm() {
   // Picking an existing seller fills in the address / DL# already on file
   useEffect(() => {
     if (isNewLead) return
+    if (scanOverride.current) {
+      setSellerAddress(scanOverride.current.address)
+      setSellerIdNumber(scanOverride.current.idNumber)
+      scanOverride.current = null
+      return
+    }
     const lead = leads.find(l => l.id === selectedLeadId)
     setSellerAddress(lead?.address || "")
     setSellerIdNumber(lead?.idNumber || "")
   }, [selectedLeadId, leads, isNewLead])
+
+  // Fill the seller section from a scanned ID. Matches an existing seller by
+  // name when none is selected; otherwise starts a new seller with that name.
+  function applyScannedId(id: ScannedId) {
+    const address = id.address || sellerAddress
+    const idNumber = id.idNumber || sellerIdNumber
+    const notes: string[] = []
+    const norm = (x: string) => x.toLowerCase().replace(/[^a-z]/g, "")
+
+    if (isNewLead) {
+      if (id.name) setNewLeadName(id.name)
+    } else if (selectedLeadId) {
+      const lead = leads.find(l => l.id === selectedLeadId)
+      if (id.name && lead && norm(lead.name) !== norm(id.name)) {
+        notes.push(`Name on ID is "${id.name}" but the selected seller is "${lead.name}" — double-check the seller.`)
+      }
+    } else if (id.name) {
+      const match = leads.find(l => norm(l.name) === norm(id.name!))
+      if (match) {
+        scanOverride.current = { address, idNumber }
+        setSelectedLeadId(match.id)
+        notes.push(`Matched existing seller ${match.name}.`)
+      } else {
+        setIsNewLead(true)
+        setNewLeadName(id.name)
+        notes.push("New seller — check the name, then add phone/email if you have them.")
+      }
+    }
+
+    setSellerAddress(address)
+    setSellerIdNumber(idNumber)
+
+    const missing = [!id.name && "name", !id.address && "address", !id.idNumber && "DL #"].filter(Boolean)
+    if (missing.length) notes.push(`Couldn't read: ${missing.join(", ")} — please type ${missing.length > 1 ? "them" : "it"} in.`)
+    if (id.expired) {
+      setScanNotice({ tone: "warn", text: `⚠ This ID expired on ${id.expirationDate}. ${notes.join(" ")}`.trim() })
+    } else {
+      setScanNotice({ tone: notes.some(n => n.startsWith("Name on ID") || n.startsWith("Couldn't")) ? "warn" : "ok",
+        text: ["ID read — please check the details below.", ...notes].join(" ") })
+    }
+  }
 
   useEffect(() => {
     if (session) {
@@ -1012,7 +1063,13 @@ function NewPurchaseForm() {
                 className={`px-4 py-1.5 rounded text-sm font-medium ${isNewLead ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
                 New Lead
               </button>
+              <div className="ml-auto"><ScanIdButton onScanned={applyScannedId} /></div>
             </div>
+            {scanNotice && (
+              <div className={`mb-3 px-3 py-2 rounded text-sm ${scanNotice.tone === "warn" ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-green-50 text-green-800 border border-green-200"}`}>
+                {scanNotice.text}
+              </div>
+            )}
 
             {!isNewLead ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -10,8 +10,25 @@ import { auth } from "@/lib/auth"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Newest model first; fall back to the model the rest of the app already uses
-const MODELS = ["claude-sonnet-5-5", "claude-sonnet-4-20250514"]
+// Reading an ID can take a few seconds; allow up to 30s on Vercel
+export const maxDuration = 30
+
+// Tried in order until one works: best reader first, then a fast fallback,
+// then the model the rest of the app already uses
+const MODELS = ["claude-sonnet-5-5", "claude-haiku-4-5-20251001", "claude-sonnet-4-20250514"]
+
+// Plain-English reason for an AI failure (no image data involved)
+function describeAiError(error: unknown): string {
+  const status = (error as { status?: number })?.status
+  const msg = error instanceof Error ? error.message : ""
+  if (status === 401 || status === 403) return "The AI key on the server is invalid or lacks access (ANTHROPIC_API_KEY)."
+  if (/credit balance|billing/i.test(msg)) return "The AI account is out of credits — add credits at console.anthropic.com."
+  if (status === 429) return "The AI service is busy or the account hit its rate limit — try again in a moment."
+  if (status === 404) return "The AI model wasn't found for this account."
+  if (status === 529 || status === 503) return "The AI service is temporarily overloaded — try again in a moment."
+  if (status === 413) return "The photo was too large."
+  return status ? `AI error ${status}.` : "Couldn't reach the AI service."
+}
 
 const PROMPT = `This is a photo of a government-issued photo ID (usually a US driver's license or state ID card).
 Read it and reply with ONLY a JSON object, no other text, in exactly this shape:
@@ -69,6 +86,7 @@ export async function POST(request: Request) {
 
   let text = ""
   let lastError: unknown = null
+  const failures: string[] = []
   for (const model of MODELS) {
     try {
       const response = await anthropic.messages.create({
@@ -87,12 +105,19 @@ export async function POST(request: Request) {
       break
     } catch (error) {
       lastError = error
+      failures.push(`${model}: ${(error as { status?: number })?.status ?? "?"} ${error instanceof Error ? error.message.slice(0, 200) : ""}`)
+      // Key/billing problems won't be fixed by another model — stop early
+      const status = (error as { status?: number })?.status
+      if (status === 401 || status === 403 || (error instanceof Error && /credit balance|billing/i.test(error.message))) break
     }
   }
   if (lastError) {
     // Log only the error type, never the image or its contents
-    console.error("ID scan failed:", lastError instanceof Error ? lastError.message : "unknown error")
-    return NextResponse.json({ error: "Couldn't read the ID right now — please type the details in" }, { status: 502 })
+    console.error("ID scan failed:", failures.join(" | "))
+    return NextResponse.json(
+      { error: `Couldn't read the ID: ${describeAiError(lastError)} You can type the details in meanwhile.` },
+      { status: 502 }
+    )
   }
 
   let fields: IdFields

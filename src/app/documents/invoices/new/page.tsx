@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { arrowNav } from "@/lib/table-nav"
 import { InventoryPickerModal } from "@/components/inventory-picker"
+import { Select } from "@/components/select"
 
 interface InventoryItem {
   id: string
@@ -581,13 +582,13 @@ function NewInvoiceContent() {
               {customers.length > 0 && (
                 <div className="col-span-2 md:col-span-4">
                   <label className="block text-xs font-medium text-gray-500 mb-1">Select Existing Customer</label>
-                  <select value={selectedCustomerId} onChange={e => handleCustomerSelect(e.target.value)}
+                  <Select value={selectedCustomerId} onChange={e => handleCustomerSelect(e.target.value)}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                     <option value="">— Enter manually —</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>{c.name}{c.contactPerson ? ` (${c.contactPerson})` : ""}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
               <div className="col-span-2">

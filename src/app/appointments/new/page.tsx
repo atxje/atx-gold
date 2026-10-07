@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { TextModal } from "@/components/text-modal"
 import { format } from "date-fns"
+import { Select } from "@/components/select"
 
 interface Lead {
   id: string
@@ -331,7 +332,7 @@ function NewAppointmentForm() {
                 <label htmlFor="leadId" className="block text-sm font-medium text-gray-700">
                   Lead *
                 </label>
-                <select
+                <Select
                   id="leadId"
                   name="leadId"
                   required={!isNewLead}
@@ -345,7 +346,7 @@ function NewAppointmentForm() {
                       {lead.name} {lead.phone ? `(${lead.phone})` : lead.email ? `(${lead.email})` : ""}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             ) : (
               <div className="space-y-4 p-4 bg-gray-50 rounded-md">
@@ -394,7 +395,7 @@ function NewAppointmentForm() {
                     <label htmlFor="newLeadSource" className="block text-sm font-medium text-gray-700">
                       Source
                     </label>
-                    <select
+                    <Select
                       id="newLeadSource"
                       name="newLeadSource"
                       defaultValue="ORGANIC"
@@ -405,13 +406,13 @@ function NewAppointmentForm() {
                           {s.charAt(0) + s.slice(1).toLowerCase()}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label htmlFor="newLeadChannel" className="block text-sm font-medium text-gray-700">
                       Channel
                     </label>
-                    <select
+                    <Select
                       id="newLeadChannel"
                       name="newLeadChannel"
                       defaultValue="PHONE"
@@ -422,7 +423,7 @@ function NewAppointmentForm() {
                           {c === "ONLINE_FORM" ? "Online Form" : c.replace("_", " ").charAt(0) + c.replace("_", " ").slice(1).toLowerCase()}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -548,7 +549,7 @@ function NewAppointmentForm() {
               <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
                 Duration (minutes)
               </label>
-              <select
+              <Select
                 id="duration"
                 name="duration"
                 defaultValue="30"
@@ -560,7 +561,7 @@ function NewAppointmentForm() {
                 <option value="60">1 hour</option>
                 <option value="90">1.5 hours</option>
                 <option value="120">2 hours</option>
-              </select>
+              </Select>
             </div>
 
             <div>

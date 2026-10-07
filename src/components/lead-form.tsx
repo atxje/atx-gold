@@ -46,6 +46,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
     const norm = (x: string) => x.toLowerCase().replace(/[^a-z]/g, "")
     if (id.name && current && norm(current) !== norm(id.name)) {
       notes.push(`Name changed from "${current}" to "${id.name}" (as on the ID).`)
+import { Select } from "@/components/select"
     }
     set("name", id.name)
     set("address", id.address)
@@ -222,7 +223,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
           <label htmlFor="source" className="block text-sm font-medium text-gray-700">
             Source
           </label>
-          <select
+          <Select
             id="source"
             name="source"
             defaultValue={lead?.source || "ORGANIC"}
@@ -233,14 +234,14 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
                 {s.charAt(0) + s.slice(1).toLowerCase()}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
           <label htmlFor="channel" className="block text-sm font-medium text-gray-700">
             Channel
           </label>
-          <select
+          <Select
             id="channel"
             name="channel"
             defaultValue={lead?.channel || "PHONE"}
@@ -251,14 +252,14 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
                 {c === "ONLINE_FORM" ? "Online Form" : c.replace("_", " ").charAt(0) + c.replace("_", " ").slice(1).toLowerCase()}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
           <label htmlFor="status" className="block text-sm font-medium text-gray-700">
             Status
           </label>
-          <select
+          <Select
             id="status"
             name="status"
             defaultValue={lead?.status || "NEW"}
@@ -269,7 +270,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
                 {s.replace("_", " ").charAt(0) + s.replace("_", " ").slice(1).toLowerCase()}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

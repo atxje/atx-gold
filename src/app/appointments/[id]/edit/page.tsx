@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
+import { Select } from "@/components/select"
 
 interface Appointment {
   id: string
@@ -161,7 +162,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
               <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
                 Duration (minutes)
               </label>
-              <select
+              <Select
                 id="duration"
                 name="duration"
                 defaultValue={appointment.duration}
@@ -173,7 +174,7 @@ export default function EditAppointmentPage({ params }: { params: Promise<{ id: 
                 <option value="60">1 hour</option>
                 <option value="90">1.5 hours</option>
                 <option value="120">2 hours</option>
-              </select>
+              </Select>
             </div>
 
             <div>

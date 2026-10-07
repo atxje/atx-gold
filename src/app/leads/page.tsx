@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
+import { Select } from "@/components/select"
 
 interface Lead {
   id: string
@@ -92,7 +93,7 @@ export default function LeadsPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
             />
-            <select
+            <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md"
@@ -104,7 +105,7 @@ export default function LeadsPage() {
               <option value="MET">Met</option>
               <option value="BOUGHT">Bought</option>
               <option value="NO_SALE">No Sale</option>
-            </select>
+            </Select>
           </div>
         </div>
 

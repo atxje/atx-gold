@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Select } from "@/components/select"
 
 export interface DiamondData {
   shape: string
@@ -103,10 +104,10 @@ export function DiamondModal({ open, onClose, onSave, initial, totalCost }: Prop
           <div className="grid grid-cols-4 gap-3">
             <div>
               <label className={labelClass}>Shape</label>
-              <select value={data.shape} onChange={e => set("shape", e.target.value)} className={selectClass}>
+              <Select value={data.shape} onChange={e => set("shape", e.target.value)} className={selectClass}>
                 <option value="">Select...</option>
                 {SHAPES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelClass}>Size (ct)</label>
@@ -115,17 +116,17 @@ export function DiamondModal({ open, onClose, onSave, initial, totalCost }: Prop
             </div>
             <div>
               <label className={labelClass}>Color</label>
-              <select value={data.color} onChange={e => set("color", e.target.value)} className={selectClass}>
+              <Select value={data.color} onChange={e => set("color", e.target.value)} className={selectClass}>
                 <option value="">Select...</option>
                 {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelClass}>Clarity</label>
-              <select value={data.clarity} onChange={e => set("clarity", e.target.value)} className={selectClass}>
+              <Select value={data.clarity} onChange={e => set("clarity", e.target.value)} className={selectClass}>
                 <option value="">Select...</option>
                 {CLARITIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -133,27 +134,27 @@ export function DiamondModal({ open, onClose, onSave, initial, totalCost }: Prop
           <div className="grid grid-cols-4 gap-3">
             <div>
               <label className={labelClass}>Cut Grade</label>
-              <select value={data.cutGrade} onChange={e => set("cutGrade", e.target.value)} className={selectClass}>
+              <Select value={data.cutGrade} onChange={e => set("cutGrade", e.target.value)} className={selectClass}>
                 {GRADES.map(g => <option key={g} value={g}>{g || "Select..."}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelClass}>Polish</label>
-              <select value={data.polish} onChange={e => set("polish", e.target.value)} className={selectClass}>
+              <Select value={data.polish} onChange={e => set("polish", e.target.value)} className={selectClass}>
                 {GRADES.map(g => <option key={g} value={g}>{g || "Select..."}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelClass}>Symmetry</label>
-              <select value={data.symmetry} onChange={e => set("symmetry", e.target.value)} className={selectClass}>
+              <Select value={data.symmetry} onChange={e => set("symmetry", e.target.value)} className={selectClass}>
                 {GRADES.map(g => <option key={g} value={g}>{g || "Select..."}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelClass}>Fluorescence</label>
-              <select value={data.fluorescence} onChange={e => set("fluorescence", e.target.value)} className={selectClass}>
+              <Select value={data.fluorescence} onChange={e => set("fluorescence", e.target.value)} className={selectClass}>
                 {FLUORESCENCE.map(f => <option key={f} value={f}>{f || "Select..."}</option>)}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -161,9 +162,9 @@ export function DiamondModal({ open, onClose, onSave, initial, totalCost }: Prop
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className={labelClass}>Lab</label>
-              <select value={data.lab} onChange={e => set("lab", e.target.value)} className={selectClass}>
+              <Select value={data.lab} onChange={e => set("lab", e.target.value)} className={selectClass}>
                 {LABS.map(l => <option key={l} value={l}>{l || "None"}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelClass}>Cert #</label>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, use } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
+import { Select } from "@/components/select"
 
 interface Message {
   id: string
@@ -172,7 +173,7 @@ export default function ConversationDetailPage({
             >
               View Lead
             </Link>
-            <select
+            <Select
               value={conversation.status}
               onChange={(e) => updateStatus(e.target.value)}
               className="text-sm border border-gray-300 rounded px-2 py-1"
@@ -180,7 +181,7 @@ export default function ConversationDetailPage({
               <option value="ACTIVE">Active</option>
               <option value="PAUSED">Paused</option>
               <option value="COMPLETED">Completed</option>
-            </select>
+            </Select>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
+import { Select } from "@/components/select"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -128,7 +129,7 @@ export default function RegisterPage() {
               <label htmlFor="role" className="block text-sm font-medium text-gray-700">
                 Role
               </label>
-              <select
+              <Select
                 id="role"
                 name="role"
                 defaultValue="EMPLOYEE"
@@ -136,7 +137,7 @@ export default function RegisterPage() {
               >
                 <option value="EMPLOYEE">Employee</option>
                 <option value="ADMIN">Admin</option>
-              </select>
+              </Select>
             </div>
 
             <div>

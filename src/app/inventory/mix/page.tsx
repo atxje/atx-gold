@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { InventoryPickerModal } from "@/components/inventory-picker"
+import { Select } from "@/components/select"
 
 interface InventoryItem {
   id: string
@@ -416,22 +417,22 @@ function MixContent() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Category *</label>
-                    <select required value={destCategory} onChange={e => { setDestCategory(e.target.value); setDestSubcategory("") }}
+                    <Select required value={destCategory} onChange={e => { setDestCategory(e.target.value); setDestSubcategory("") }}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                       <option value="">Select…</option>
                       {Object.entries(categories).map(([key, c]) => (
                         <option key={key} value={key}>{c.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Type *</label>
-                    <select required value={destSubcategory} onChange={e => setDestSubcategory(e.target.value)}
+                    <Select required value={destSubcategory} onChange={e => setDestSubcategory(e.target.value)}
                       disabled={!destCategory}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-40">
                       <option value="">Select…</option>
                       {destCat?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   {destCategory && destSubcategory && (
                     <div className="col-span-2 text-sm text-gray-500">

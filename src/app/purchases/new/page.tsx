@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 import { arrowNav } from "@/lib/table-nav"
 import { todayInputValue, purchaseDateKey } from "@/lib/purchase-date"
+import { Select } from "@/components/select"
 
 interface DiamondData {
   shape: string
@@ -1093,13 +1094,13 @@ function NewPurchaseForm() {
                 {!isNewLead ? (
                   <>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Seller (Lead) *</label>
-                    <select required value={selectedLeadId} onChange={e => setSelectedLeadId(e.target.value)}
+                    <Select required value={selectedLeadId} onChange={e => setSelectedLeadId(e.target.value)}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                       <option value="">Select a lead</option>
                       {leads.map(l => (
                         <option key={l.id} value={l.id}>{l.name}{l.phone ? ` (${l.phone})` : l.email ? ` (${l.email})` : ""}</option>
                       ))}
-                    </select>
+                    </Select>
                   </>
                 ) : (
                   <>
@@ -1121,17 +1122,17 @@ function NewPurchaseForm() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Source</label>
-                <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)}
+                <Select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                   {sources.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Channel</label>
-                <select value={newLeadChannel} onChange={e => setNewLeadChannel(e.target.value)}
+                <Select value={newLeadChannel} onChange={e => setNewLeadChannel(e.target.value)}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                   {channels.map(c => <option key={c} value={c}>{c === "ONLINE_FORM" ? "Online Form" : c.replace("_", " ").charAt(0) + c.replace("_", " ").slice(1).toLowerCase()}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Date</label>
@@ -1237,22 +1238,22 @@ function NewPurchaseForm() {
                         {visibleDefs.map(col => (
                           <td key={col.key} className={`${cellClass} align-middle`}>
                             {col.key === "category" && (
-                              <select value={item.category}
+                              <Select value={item.category}
                                 onChange={e => updateLineItem(item.id, "category", e.target.value)}
                                 className={selectClass + " min-w-[140px]"}>
                                 <option value="">Select...</option>
                                 {Object.entries(categories).filter(([, c]) => c.metalType !== "DIAMOND" && c.metalType !== "JEWELRY").map(([key, c]) => (
                                   <option key={key} value={key}>{c.label}</option>
                                 ))}
-                              </select>
+                              </Select>
                             )}
                             {col.key === "type" && (
-                              <select value={item.subcategory} disabled={!item.category}
+                              <Select value={item.subcategory} disabled={!item.category}
                                 onChange={e => updateLineItem(item.id, "subcategory", e.target.value)}
                                 className={selectClass + " min-w-[120px] disabled:opacity-40"}>
                                 <option value="">Select...</option>
                                 {cat?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
+                              </Select>
                             )}
                             {col.key === "description" && (
                               <input value={item.description} placeholder="Optional"
@@ -1366,11 +1367,11 @@ function NewPurchaseForm() {
                             <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-600">{item.itemCode}</span>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.shape} onChange={e => updateDiamondItem(item.id, "shape", e.target.value)}
+                            <Select value={dd.shape} onChange={e => updateDiamondItem(item.id, "shape", e.target.value)}
                               className={selectClass + " min-w-[90px]"}>
                               <option value="">--</option>
                               {DIAMOND_SHAPES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <input type="number" step="0.01" value={dd.caratWeight} placeholder="0.00"
@@ -1378,10 +1379,10 @@ function NewPurchaseForm() {
                               className={numInputClass + " min-w-[70px]"} />
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.lab} onChange={e => updateDiamondItem(item.id, "lab", e.target.value)}
+                            <Select value={dd.lab} onChange={e => updateDiamondItem(item.id, "lab", e.target.value)}
                               className={selectClass + " min-w-[65px]"}>
                               {DIAMOND_LABS.map(l => <option key={l} value={l}>{l || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <div className="flex items-center gap-1 min-w-[130px]">
@@ -1400,42 +1401,42 @@ function NewPurchaseForm() {
                             </div>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.color} onChange={e => updateDiamondItem(item.id, "color", e.target.value)}
+                            <Select value={dd.color} onChange={e => updateDiamondItem(item.id, "color", e.target.value)}
                               className={selectClass + " min-w-[55px]"}>
                               <option value="">--</option>
                               {DIAMOND_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.clarity} onChange={e => updateDiamondItem(item.id, "clarity", e.target.value)}
+                            <Select value={dd.clarity} onChange={e => updateDiamondItem(item.id, "clarity", e.target.value)}
                               className={selectClass + " min-w-[60px]"}>
                               <option value="">--</option>
                               {DIAMOND_CLARITIES.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.fluorescence} onChange={e => updateDiamondItem(item.id, "fluorescence", e.target.value)}
+                            <Select value={dd.fluorescence} onChange={e => updateDiamondItem(item.id, "fluorescence", e.target.value)}
                               className={selectClass + " min-w-[70px]"}>
                               {DIAMOND_FLUORESCENCE.map(f => <option key={f} value={f}>{f || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.cutGrade} onChange={e => updateDiamondItem(item.id, "cutGrade", e.target.value)}
+                            <Select value={dd.cutGrade} onChange={e => updateDiamondItem(item.id, "cutGrade", e.target.value)}
                               className={selectClass + " min-w-[70px]"}>
                               {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.polish} onChange={e => updateDiamondItem(item.id, "polish", e.target.value)}
+                            <Select value={dd.polish} onChange={e => updateDiamondItem(item.id, "polish", e.target.value)}
                               className={selectClass + " min-w-[70px]"}>
                               {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={dd.symmetry} onChange={e => updateDiamondItem(item.id, "symmetry", e.target.value)}
+                            <Select value={dd.symmetry} onChange={e => updateDiamondItem(item.id, "symmetry", e.target.value)}
                               className={selectClass + " min-w-[70px]"}>
                               {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <div className="flex items-center gap-0.5 min-w-[80px]">
@@ -1510,31 +1511,31 @@ function NewPurchaseForm() {
                             <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-600">{item.itemCode}</span>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={item.subcategory}
+                            <Select value={item.subcategory}
                               onChange={e => updateJewelrySubcategory(item.id, e.target.value)}
                               className={selectClass + " min-w-[100px]"}>
                               <option value="">Select...</option>
                               {jCat?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={jd.metal} onChange={e => updateJewelryItem(item.id, "metal", e.target.value)}
+                            <Select value={jd.metal} onChange={e => updateJewelryItem(item.id, "metal", e.target.value)}
                               className={selectClass + " min-w-[80px]"}>
                               <option value="">--</option>
                               {JEWELRY_METALS.map(m => <option key={m} value={m}>{m}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={jd.brand} onChange={e => updateJewelryItem(item.id, "brand", e.target.value)}
+                            <Select value={jd.brand} onChange={e => updateJewelryItem(item.id, "brand", e.target.value)}
                               className={selectClass + " min-w-[80px]"}>
                               {brandOptions(jewelryBrands, jd.brand).map(b => <option key={b} value={b}>{b || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={jd.mainStone} onChange={e => updateJewelryItem(item.id, "mainStone", e.target.value)}
+                            <Select value={jd.mainStone} onChange={e => updateJewelryItem(item.id, "mainStone", e.target.value)}
                               className={selectClass + " min-w-[90px]"}>
                               {stoneOptions(stones, jd.mainStone).map(s => <option key={s} value={s}>{s || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <input value={jd.description} placeholder="Description"
@@ -1614,30 +1615,30 @@ function NewPurchaseForm() {
                             <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-600">{item.itemCode}</span>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={item.subcategory}
+                            <Select value={item.subcategory}
                               onChange={e => updateWatchSubcategory(item.id, e.target.value)}
                               className={selectClass + " min-w-[100px]"}>
                               <option value="">Select...</option>
                               {wCat?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={wd.brand} onChange={e => updateWatchItem(item.id, "brand", e.target.value)}
+                            <Select value={wd.brand} onChange={e => updateWatchItem(item.id, "brand", e.target.value)}
                               className={selectClass + " min-w-[120px]"}>
                               {brandOptions(watchBrands, wd.brand).map(b => <option key={b} value={b}>{b || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={wd.caseMetal} onChange={e => updateWatchItem(item.id, "caseMetal", e.target.value)}
+                            <Select value={wd.caseMetal} onChange={e => updateWatchItem(item.id, "caseMetal", e.target.value)}
                               className={selectClass + " min-w-[80px]"}>
                               {WATCH_METALS.map(m => <option key={m} value={m}>{m || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
-                            <select value={wd.caseSizeMM} onChange={e => updateWatchItem(item.id, "caseSizeMM", e.target.value)}
+                            <Select value={wd.caseSizeMM} onChange={e => updateWatchItem(item.id, "caseSizeMM", e.target.value)}
                               className={selectClass + " min-w-[75px]"}>
                               {WATCH_SIZES.map(s => <option key={s} value={s}>{s || "--"}</option>)}
-                            </select>
+                            </Select>
                           </td>
                           <td className={`${cellClass} align-middle`}>
                             <input value={wd.referenceNumber} placeholder="Ref #"

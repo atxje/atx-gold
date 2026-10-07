@@ -7,6 +7,7 @@ import { useRouter, useParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
 import { formatPurchaseDate } from "@/lib/purchase-date"
+import { Select } from "@/components/select"
 
 interface DiamondDetails {
   shape: string | null; caratWeight: number | null; color: string | null; clarity: string | null
@@ -435,21 +436,21 @@ export default function InventoryItemPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <label className={labelClass}>Metal</label>
-                    <select value={fJewelry.metal} onChange={e => setFJewelry({ ...fJewelry, metal: e.target.value })} className={inputClass}>
+                    <Select value={fJewelry.metal} onChange={e => setFJewelry({ ...fJewelry, metal: e.target.value })} className={inputClass}>
                       {JEWELRY_METALS.map(m => <option key={m} value={m}>{m || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Brand</label>
-                    <select value={fJewelry.brand} onChange={e => setFJewelry({ ...fJewelry, brand: e.target.value })} className={inputClass}>
+                    <Select value={fJewelry.brand} onChange={e => setFJewelry({ ...fJewelry, brand: e.target.value })} className={inputClass}>
                       {brandOptions(jewelryBrands, fJewelry.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Main Stone</label>
-                    <select value={fJewelry.mainStone} onChange={e => setFJewelry({ ...fJewelry, mainStone: e.target.value })} className={inputClass}>
+                    <Select value={fJewelry.mainStone} onChange={e => setFJewelry({ ...fJewelry, mainStone: e.target.value })} className={inputClass}>
                       {stoneOptions(stones, fJewelry.mainStone).map(s => <option key={s} value={s}>{s || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Cost / gram ($)</label>
@@ -469,21 +470,21 @@ export default function InventoryItemPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <label className={labelClass}>Brand</label>
-                    <select value={fWatch.brand} onChange={e => setFWatch({ ...fWatch, brand: e.target.value })} className={inputClass}>
+                    <Select value={fWatch.brand} onChange={e => setFWatch({ ...fWatch, brand: e.target.value })} className={inputClass}>
                       {brandOptions(watchBrands, fWatch.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Case Metal</label>
-                    <select value={fWatch.caseMetal} onChange={e => setFWatch({ ...fWatch, caseMetal: e.target.value })} className={inputClass}>
+                    <Select value={fWatch.caseMetal} onChange={e => setFWatch({ ...fWatch, caseMetal: e.target.value })} className={inputClass}>
                       {WATCH_METALS.map(m => <option key={m} value={m}>{m || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Case Size</label>
-                    <select value={fWatch.caseSizeMM} onChange={e => setFWatch({ ...fWatch, caseSizeMM: e.target.value })} className={inputClass}>
+                    <Select value={fWatch.caseSizeMM} onChange={e => setFWatch({ ...fWatch, caseSizeMM: e.target.value })} className={inputClass}>
                       {WATCH_SIZES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Reference #</label>
@@ -515,9 +516,9 @@ export default function InventoryItemPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div>
                     <label className={labelClass}>Shape</label>
-                    <select value={fDiamond.shape} onChange={e => setFDiamond({ ...fDiamond, shape: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.shape} onChange={e => setFDiamond({ ...fDiamond, shape: e.target.value })} className={inputClass}>
                       {DIAMOND_SHAPES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Carat</label>
@@ -525,21 +526,21 @@ export default function InventoryItemPage() {
                   </div>
                   <div>
                     <label className={labelClass}>Color</label>
-                    <select value={fDiamond.color} onChange={e => setFDiamond({ ...fDiamond, color: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.color} onChange={e => setFDiamond({ ...fDiamond, color: e.target.value })} className={inputClass}>
                       {DIAMOND_COLORS.map(c => <option key={c} value={c}>{c || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Clarity</label>
-                    <select value={fDiamond.clarity} onChange={e => setFDiamond({ ...fDiamond, clarity: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.clarity} onChange={e => setFDiamond({ ...fDiamond, clarity: e.target.value })} className={inputClass}>
                       {DIAMOND_CLARITIES.map(c => <option key={c} value={c}>{c || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Lab</label>
-                    <select value={fDiamond.lab} onChange={e => setFDiamond({ ...fDiamond, lab: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.lab} onChange={e => setFDiamond({ ...fDiamond, lab: e.target.value })} className={inputClass}>
                       {DIAMOND_LABS.map(l => <option key={l} value={l}>{l || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Cert #</label>
@@ -547,27 +548,27 @@ export default function InventoryItemPage() {
                   </div>
                   <div>
                     <label className={labelClass}>Cut</label>
-                    <select value={fDiamond.cutGrade} onChange={e => setFDiamond({ ...fDiamond, cutGrade: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.cutGrade} onChange={e => setFDiamond({ ...fDiamond, cutGrade: e.target.value })} className={inputClass}>
                       {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Polish</label>
-                    <select value={fDiamond.polish} onChange={e => setFDiamond({ ...fDiamond, polish: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.polish} onChange={e => setFDiamond({ ...fDiamond, polish: e.target.value })} className={inputClass}>
                       {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Symmetry</label>
-                    <select value={fDiamond.symmetry} onChange={e => setFDiamond({ ...fDiamond, symmetry: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.symmetry} onChange={e => setFDiamond({ ...fDiamond, symmetry: e.target.value })} className={inputClass}>
                       {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Fluorescence</label>
-                    <select value={fDiamond.fluorescence} onChange={e => setFDiamond({ ...fDiamond, fluorescence: e.target.value })} className={inputClass}>
+                    <Select value={fDiamond.fluorescence} onChange={e => setFDiamond({ ...fDiamond, fluorescence: e.target.value })} className={inputClass}>
                       {DIAMOND_FLUORESCENCE.map(f => <option key={f} value={f}>{f || "–"}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelClass}>Measurements</label>

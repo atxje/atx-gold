@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { arrowNav } from "@/lib/table-nav"
+import { Select } from "@/components/select"
 
 interface DiamondData {
   shape: string; caratWeight: string; color: string; clarity: string
@@ -607,20 +608,20 @@ export default function ImportStockPage() {
                     <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50" onKeyDown={e => arrowNav(e as unknown as React.KeyboardEvent<HTMLInputElement>)}>
                       <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
                       <td className={cellClass}>
-                        <select value={item.category} onChange={e => updateLineItem(lineItems, setLineItems, item.id, "category", e.target.value)} className={selectClass}>
+                        <Select value={item.category} onChange={e => updateLineItem(lineItems, setLineItems, item.id, "category", e.target.value)} className={selectClass}>
                           <option value="">Select...</option>
                           {regularCategories.map(([id, c]) => (
                             <option key={id} value={id}>{c.label}</option>
                           ))}
-                        </select>
+                        </Select>
                       </td>
                       <td className={cellClass}>
-                        <select value={item.subcategory} onChange={e => updateLineItem(lineItems, setLineItems, item.id, "subcategory", e.target.value)} className={selectClass} disabled={!item.category}>
+                        <Select value={item.subcategory} onChange={e => updateLineItem(lineItems, setLineItems, item.id, "subcategory", e.target.value)} className={selectClass} disabled={!item.category}>
                           <option value="">Select...</option>
                           {catDef?.subcategories.map(s => (
                             <option key={s} value={s}>{s}</option>
                           ))}
-                        </select>
+                        </Select>
                       </td>
                       <td className={cellClass}>
                         <input value={item.description} onChange={e => updateLineItem(lineItems, setLineItems, item.id, "description", e.target.value)} className={inputClass} placeholder="Optional" />
@@ -714,57 +715,57 @@ export default function ImportStockPage() {
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
                         <td className={cellClass + " text-xs font-mono font-semibold text-amber-600"}>{item.itemCode}</td>
                         <td className={cellClass}>
-                          <select value={item.subcategory} onChange={e => setDiamondItems(diamondItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
+                          <Select value={item.subcategory} onChange={e => setDiamondItems(diamondItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
                             <option value="">Select...</option>
                             {catDef?.subcategories.map(s => (
                               <option key={s} value={s}>{s}</option>
                             ))}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={dd.shape} onChange={e => updateDiamondField(item.id, "shape", e.target.value)} className={selectClass}>
+                          <Select value={dd.shape} onChange={e => updateDiamondField(item.id, "shape", e.target.value)} className={selectClass}>
                             <option value="">–</option>
                             {DIAMOND_SHAPES.map(s => <option key={s}>{s}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}><input type="number" value={dd.caratWeight} onChange={e => updateDiamondField(item.id, "caratWeight", e.target.value)} className={numInputClass} step="any" /></td>
                         <td className={cellClass}>
-                          <select value={dd.lab} onChange={e => updateDiamondField(item.id, "lab", e.target.value)} className={selectClass}>
+                          <Select value={dd.lab} onChange={e => updateDiamondField(item.id, "lab", e.target.value)} className={selectClass}>
                             {DIAMOND_LABS.map(l => <option key={l} value={l}>{l || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}><input value={dd.certNumber} onChange={e => updateDiamondField(item.id, "certNumber", e.target.value)} className={inputClass} placeholder="Cert #" /></td>
                         <td className={cellClass}>
-                          <select value={dd.color} onChange={e => updateDiamondField(item.id, "color", e.target.value)} className={selectClass}>
+                          <Select value={dd.color} onChange={e => updateDiamondField(item.id, "color", e.target.value)} className={selectClass}>
                             <option value="">–</option>
                             {DIAMOND_COLORS.map(c => <option key={c}>{c}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={dd.clarity} onChange={e => updateDiamondField(item.id, "clarity", e.target.value)} className={selectClass}>
+                          <Select value={dd.clarity} onChange={e => updateDiamondField(item.id, "clarity", e.target.value)} className={selectClass}>
                             <option value="">–</option>
                             {DIAMOND_CLARITIES.map(c => <option key={c}>{c}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={dd.fluorescence} onChange={e => updateDiamondField(item.id, "fluorescence", e.target.value)} className={selectClass}>
+                          <Select value={dd.fluorescence} onChange={e => updateDiamondField(item.id, "fluorescence", e.target.value)} className={selectClass}>
                             {DIAMOND_FLUORESCENCE.map(f => <option key={f} value={f}>{f || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={dd.cutGrade} onChange={e => updateDiamondField(item.id, "cutGrade", e.target.value)} className={selectClass}>
+                          <Select value={dd.cutGrade} onChange={e => updateDiamondField(item.id, "cutGrade", e.target.value)} className={selectClass}>
                             {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={dd.polish} onChange={e => updateDiamondField(item.id, "polish", e.target.value)} className={selectClass}>
+                          <Select value={dd.polish} onChange={e => updateDiamondField(item.id, "polish", e.target.value)} className={selectClass}>
                             {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={dd.symmetry} onChange={e => updateDiamondField(item.id, "symmetry", e.target.value)} className={selectClass}>
+                          <Select value={dd.symmetry} onChange={e => updateDiamondField(item.id, "symmetry", e.target.value)} className={selectClass}>
                             {DIAMOND_GRADES.map(g => <option key={g} value={g}>{g || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}><input type="number" value={dd.costPerCarat} onChange={e => updateDiamondField(item.id, "costPerCarat", e.target.value)} className={numInputClass} step="any" /></td>
                         <td className={cellClass}><input type="number" value={dd.rapDiscount} onChange={e => updateDiamondField(item.id, "rapDiscount", e.target.value)} className={numInputClass} step="any" placeholder="%" /></td>
@@ -825,28 +826,28 @@ export default function ImportStockPage() {
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
                         <td className={cellClass + " text-xs font-mono font-semibold text-amber-600"}>{item.itemCode}</td>
                         <td className={cellClass}>
-                          <select value={item.subcategory} onChange={e => setJewelryItems(jewelryItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
+                          <Select value={item.subcategory} onChange={e => setJewelryItems(jewelryItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
                             <option value="">Select...</option>
                             {catDef?.subcategories.map(s => (
                               <option key={s} value={s}>{s}</option>
                             ))}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={jd.metal} onChange={e => updateJewelryField(item.id, "metal", e.target.value)} className={selectClass}>
+                          <Select value={jd.metal} onChange={e => updateJewelryField(item.id, "metal", e.target.value)} className={selectClass}>
                             <option value="">–</option>
                             {JEWELRY_METALS.map(m => <option key={m}>{m}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={jd.brand} onChange={e => updateJewelryField(item.id, "brand", e.target.value)} className={selectClass}>
+                          <Select value={jd.brand} onChange={e => updateJewelryField(item.id, "brand", e.target.value)} className={selectClass}>
                             {brandOptions(jewelryBrands, jd.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={jd.mainStone} onChange={e => updateJewelryField(item.id, "mainStone", e.target.value)} className={selectClass}>
+                          <Select value={jd.mainStone} onChange={e => updateJewelryField(item.id, "mainStone", e.target.value)} className={selectClass}>
                             {stoneOptions(stones, jd.mainStone).map(s => <option key={s} value={s}>{s || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}><input value={jd.description} onChange={e => updateJewelryField(item.id, "description", e.target.value)} className={inputClass} placeholder="Description" /></td>
                         <td className={cellClass}><input type="number" value={jd.weight} onChange={e => updateJewelryField(item.id, "weight", e.target.value)} className={numInputClass} step="any" /></td>
@@ -899,27 +900,27 @@ export default function ImportStockPage() {
                         <td className={cellClass + " text-center text-xs text-gray-400"}>{idx + 1}</td>
                         <td className={cellClass + " text-xs font-mono font-semibold text-amber-600"}>{item.itemCode}</td>
                         <td className={cellClass}>
-                          <select value={item.subcategory} onChange={e => setWatchItems(watchItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
+                          <Select value={item.subcategory} onChange={e => setWatchItems(watchItems.map(i => i.id === item.id ? { ...i, subcategory: e.target.value } : i))} className={selectClass}>
                             <option value="">Select...</option>
                             {catDef?.subcategories.map(s => (
                               <option key={s} value={s}>{s}</option>
                             ))}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={wd.brand} onChange={e => updateWatchField(item.id, "brand", e.target.value)} className={selectClass}>
+                          <Select value={wd.brand} onChange={e => updateWatchField(item.id, "brand", e.target.value)} className={selectClass}>
                             {brandOptions(watchBrands, wd.brand).map(b => <option key={b} value={b}>{b || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={wd.caseMetal} onChange={e => updateWatchField(item.id, "caseMetal", e.target.value)} className={selectClass}>
+                          <Select value={wd.caseMetal} onChange={e => updateWatchField(item.id, "caseMetal", e.target.value)} className={selectClass}>
                             {WATCH_METALS.map(m => <option key={m} value={m}>{m || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}>
-                          <select value={wd.caseSizeMM} onChange={e => updateWatchField(item.id, "caseSizeMM", e.target.value)} className={selectClass}>
+                          <Select value={wd.caseSizeMM} onChange={e => updateWatchField(item.id, "caseSizeMM", e.target.value)} className={selectClass}>
                             {WATCH_SIZES.map(s => <option key={s} value={s}>{s || "–"}</option>)}
-                          </select>
+                          </Select>
                         </td>
                         <td className={cellClass}><input value={wd.referenceNumber} onChange={e => updateWatchField(item.id, "referenceNumber", e.target.value)} className={inputClass} placeholder="Ref #" /></td>
                         <td className={cellClass}><input value={wd.serialNumber} onChange={e => updateWatchField(item.id, "serialNumber", e.target.value)} className={inputClass} placeholder="Serial #" /></td>

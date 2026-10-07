@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { Select } from "@/components/select"
 
 interface Subcategory {
   id: string
@@ -188,17 +189,17 @@ export default function CategoriesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Metal Type</label>
-                <select value={addMetal} onChange={e => setAddMetal(e.target.value)}
+                <Select value={addMetal} onChange={e => setAddMetal(e.target.value)}
                   className="w-full border rounded px-3 py-2 text-sm">
                   {metalTypes.map(m => <option key={m} value={m}>{metalLabels[m]}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Weight Unit</label>
-                <select value={addUnit} onChange={e => setAddUnit(e.target.value)}
+                <Select value={addUnit} onChange={e => setAddUnit(e.target.value)}
                   className="w-full border rounded px-3 py-2 text-sm">
                   {weightUnits.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
             <div className="mb-4">
@@ -254,17 +255,17 @@ export default function CategoriesPage() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Metal Type</label>
-                        <select value={editMetal} onChange={e => setEditMetal(e.target.value)}
+                        <Select value={editMetal} onChange={e => setEditMetal(e.target.value)}
                           className="w-full border rounded px-3 py-2 text-sm">
                           {metalTypes.map(m => <option key={m} value={m}>{metalLabels[m]}</option>)}
-                        </select>
+                        </Select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Weight Unit</label>
-                        <select value={editUnit} onChange={e => setEditUnit(e.target.value)}
+                        <Select value={editUnit} onChange={e => setEditUnit(e.target.value)}
                           className="w-full border rounded px-3 py-2 text-sm">
                           {weightUnits.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                        </select>
+                        </Select>
                       </div>
                     </div>
                     <div className="mb-4">

@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { purchaseDateKey } from "@/lib/purchase-date"
+import { Select } from "@/components/select"
 
 interface Purchase {
   id: string
@@ -152,7 +153,7 @@ export default function EditPurchasePage({ params }: { params: Promise<{ id: str
                 <label htmlFor="metalType" className="block text-sm font-medium text-gray-700">
                   Metal Type *
                 </label>
-                <select
+                <Select
                   id="metalType"
                   name="metalType"
                   required
@@ -164,7 +165,7 @@ export default function EditPurchasePage({ params }: { params: Promise<{ id: str
                       {type.charAt(0) + type.slice(1).toLowerCase()}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>

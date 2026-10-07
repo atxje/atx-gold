@@ -301,6 +301,7 @@ const filteredPurchases = useMemo(() => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Seller</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Paid</th>
+                  <th className="px-3 py-3"><span className="sr-only">Print</span></th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -349,6 +350,13 @@ const filteredPurchases = useMemo(() => {
                         </td>
                         <td className="px-6 py-4 text-right text-sm font-bold text-amber-600">
                           ${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-4 text-right">
+                          <button type="button" title="Print bill of sale"
+                            onClick={e => { e.stopPropagation(); router.push(`/purchases/${p.id}?print=1`) }}
+                            className="px-2.5 py-1 text-xs font-medium text-amber-700 border border-amber-300 rounded hover:bg-amber-50">
+                            Print
+                          </button>
                         </td>
                       </tr>
                     )

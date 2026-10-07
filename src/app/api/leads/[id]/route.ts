@@ -63,7 +63,7 @@ export async function PUT(
 
   try {
     const body = await request.json()
-    const { name, phone, email, notes, source, channel, status, followUpDate } = body
+    const { name, phone, email, address, idNumber, notes, source, channel, status, followUpDate } = body
 
     const lead = await prisma.lead.update({
       where: { id },
@@ -71,6 +71,8 @@ export async function PUT(
         name,
         phone,
         email,
+        ...(address !== undefined && { address: address || null }),
+        ...(idNumber !== undefined && { idNumber: idNumber || null }),
         notes,
         source: source as LeadSource,
         channel: channel as LeadChannel,

@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { name, phone, email, notes, source, channel, status, followUpDate } = body
+    const { name, phone, email, address, idNumber, notes, source, channel, status, followUpDate } = body
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -76,6 +76,8 @@ export async function POST(request: Request) {
         name,
         phone,
         email,
+        address: address || null,
+        idNumber: idNumber || null,
         notes,
         source: source as LeadSource || "ORGANIC",
         channel: channel as LeadChannel || "PHONE",

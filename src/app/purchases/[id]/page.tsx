@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
@@ -8,6 +8,7 @@ import { Navbar } from "@/components/navbar"
 import { BUSINESS } from "@/lib/business"
 import { arrowNav } from "@/lib/table-nav"
 import { formatPurchaseDate, purchaseDateKey } from "@/lib/purchase-date"
+import { BillOfSale } from "@/components/bill-of-sale"
 
 interface PurchaseItem {
   id: string
@@ -22,6 +23,10 @@ interface PurchaseItem {
   overpayFlag?: boolean
   overpayReason?: string | null
   overpaySpotSnapshot?: number | null
+  metalType?: string
+  category?: string | null
+  subcategory?: string | null
+  createdAt?: string
   inventoryItem: { id: string; name: string; itemCode: string | null } | null
 }
 
@@ -31,7 +36,9 @@ interface Purchase {
   purchaseDate: string
   notes: string | null
   paymentMethod: string | null
-  lead: { id: string; name: string; phone: string | null; email: string | null }
+  lead: { id: string; name: string; phone: string | null; email: string | null; address?: string | null; idNumber?: string | null }
+  user?: { id: string; name: string | null; email: string } | null
+  createdAt?: string
   items: PurchaseItem[]
 }
 
@@ -85,6 +92,17 @@ export default function PurchaseDetailPage() {
         .then(data => { setPurchase(data); setLoading(false) })
     }
   }, [session, id])
+
+  // Arrived from "Record & Print" or a print button: open the print dialog
+  // once the purchase has loaded, then drop ?print=1 so a refresh won't reprint
+  const autoPrinted = useRef(false)
+  useEffect(() => {
+    if (!purchase || autoPrinted.current) return
+    if (new URLSearchParams(window.location.search).get("print") !== "1") return
+    autoPrinted.current = true
+    window.history.replaceState(null, "", window.location.pathname)
+    setTimeout(() => window.print(), 300)
+  }, [purchase])
 
   function startEdit() {
     if (!purchase) return
@@ -242,7 +260,7 @@ export default function PurchaseDetailPage() {
                 ) : null}
                 <button onClick={() => window.print()}
                   className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700">
-                  Print / Save PDF
+                  Print Bill of Sale
                 </button>
               </>
             )}
@@ -250,7 +268,20 @@ export default function PurchaseDetailPage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-8 py-8 bg-white print:shadow-none print:max-w-none print:px-12 print:py-10">
+      {/* Printed form — only visible when printing */}
+      {!editMode && (
+        <BillOfSale
+          purchaseNumber={purchase.purchaseNumber}
+          purchaseDate={purchase.purchaseDate}
+          recordedAt={purchase.items[0]?.createdAt ?? purchase.createdAt ?? null}
+          seller={purchase.lead}
+          buyerName={purchase.user?.name ?? null}
+          items={purchase.items}
+          payments={payments}
+        />
+      )}
+
+      <div className="max-w-3xl mx-auto px-8 py-8 bg-white print:hidden">
 
         {/* Header */}
         <div className="flex justify-between items-start mb-8">
@@ -503,7 +534,8 @@ export default function PurchaseDetailPage() {
       </div>
 
       <style>{`
-        @media print { body { -webkit-print-color-adjust: exact; } }
+        @page { size: letter; margin: 0.5in; }
+        @media print { body { -webkit-print-color-adjust: exact; background: white; } }
       `}</style>
     </>
   )

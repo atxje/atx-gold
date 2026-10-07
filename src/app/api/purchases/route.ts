@@ -64,7 +64,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { leadId: bodyLeadId, newLead, purchaseDate, notes, paymentMethod, purchaseNumber: providedNumber } = body
+    const { leadId: bodyLeadId, newLead, purchaseDate, notes, paymentMethod, purchaseNumber: providedNumber, seller } = body
+    // Seller address / DL# for the bill of sale (optional; blank clears it)
+    const sellerDetails = seller
+      ? { address: (seller.address || "").trim() || null, idNumber: (seller.idNumber || "").trim() || null }
+      : null
     const lines: PurchaseLineInput[] = Array.isArray(body.items) ? body.items : [body]
 
     if (!bodyLeadId && !newLead?.name) {
@@ -92,12 +96,14 @@ export async function POST(request: Request) {
         if (!lead) throw new PurchaseInputError("Lead not found")
         leadId = lead.id
         leadStatus = lead.status
+        if (sellerDetails) await tx.lead.update({ where: { id: leadId }, data: sellerDetails })
       } else {
         const lead = await tx.lead.create({
           data: {
             name: newLead.name,
             phone: newLead.phone || null,
             email: newLead.email || null,
+            ...(sellerDetails ?? {}),
             source: (newLead.source as LeadSource) || "ORGANIC",
             channel: (newLead.channel as LeadChannel) || "PHONE",
             status: "BOUGHT",

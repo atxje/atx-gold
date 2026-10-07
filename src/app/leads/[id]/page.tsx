@@ -14,6 +14,8 @@ interface Lead {
   name: string
   phone: string | null
   email: string | null
+  address: string | null
+  idNumber: string | null
   notes: string | null
   source: string
   channel: string
@@ -251,6 +253,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               <div>
                 <span className="text-gray-500">Email:</span>{" "}
                 <span className="text-gray-900">{lead.email || "-"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Address:</span>{" "}
+                <span className="text-gray-900">{lead.address || "-"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">DL / ID #:</span>{" "}
+                <span className="text-gray-900">{lead.idNumber || "-"}</span>
               </div>
               <div>
                 <span className="text-gray-500">Source:</span>{" "}

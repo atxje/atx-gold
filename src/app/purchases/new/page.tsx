@@ -100,6 +100,8 @@ interface Lead {
   name: string
   phone: string | null
   email: string | null
+  address?: string | null
+  idNumber?: string | null
 }
 
 const PAYMENT_METHODS = ["Cash", "Check", "Zelle / Venmo", "Bank Transfer"]
@@ -210,6 +212,10 @@ function NewPurchaseForm() {
   const [newLeadEmail, setNewLeadEmail] = useState("")
   const [newLeadSource, setNewLeadSource] = useState("ORGANIC")
   const [newLeadChannel, setNewLeadChannel] = useState("PHONE")
+  // Seller address / DL# for the bill of sale — saved onto the seller record
+  const [sellerAddress, setSellerAddress] = useState("")
+  const [sellerIdNumber, setSellerIdNumber] = useState("")
+  const printAfterSave = useRef(false)
   const [purchaseDate, setPurchaseDate] = useState(todayInputValue())
   const [ticketTotal, setTicketTotal] = useState("")
   const [notes, setNotes] = useState("")
@@ -230,6 +236,14 @@ function NewPurchaseForm() {
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
   }, [status, router])
+
+  // Picking an existing seller fills in the address / DL# already on file
+  useEffect(() => {
+    if (isNewLead) return
+    const lead = leads.find(l => l.id === selectedLeadId)
+    setSellerAddress(lead?.address || "")
+    setSellerIdNumber(lead?.idNumber || "")
+  }, [selectedLeadId, leads, isNewLead])
 
   useEffect(() => {
     if (session) {
@@ -890,6 +904,7 @@ function NewPurchaseForm() {
               notes: notes || null,
               paymentMethod: paymentData,
               removeItemIds: removedIds.length > 0 ? removedIds : undefined,
+              seller: { address: sellerAddress, idNumber: sellerIdNumber },
               newItems: allNewItems.length > 0 ? allNewItems.map(buildLine) : undefined,
               items: existingItems.map(item => {
                 const line = buildLine(item)
@@ -913,7 +928,7 @@ function NewPurchaseForm() {
           redirectId = putResult.id || editId
         }
 
-        router.push(`/purchases/${redirectId || editId}`)
+        router.push(`/purchases/${redirectId || editId}${printAfterSave.current ? "?print=1" : ""}`)
         return
       }
 
@@ -952,6 +967,7 @@ function NewPurchaseForm() {
           ...(isNewLead
             ? { newLead: { name: newLeadName, phone: newLeadPhone || null, email: newLeadEmail || null, source: newLeadSource, channel: newLeadChannel } }
             : { leadId: selectedLeadId }),
+          seller: { address: sellerAddress, idNumber: sellerIdNumber },
           purchaseDate,
           notes: notes || null,
           paymentMethod: paymentData,
@@ -962,7 +978,7 @@ function NewPurchaseForm() {
       const created = await res.json()
       const firstPurchaseId: string | null = created.id || null
 
-      router.push(firstPurchaseId ? `/purchases/${firstPurchaseId}` : `/documents?tab=purchases`)
+      router.push(firstPurchaseId ? `/purchases/${firstPurchaseId}${printAfterSave.current ? "?print=1" : ""}` : `/documents?tab=purchases`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -1072,6 +1088,19 @@ function NewPurchaseForm() {
                 </div>
               </div>
             )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+              <div className="col-span-2 md:col-span-3">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Seller Address</label>
+                <input value={sellerAddress} onChange={e => setSellerAddress(e.target.value)}
+                  placeholder="Street, City, State ZIP"
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div className="col-span-2 md:col-span-1">
+                <label className="block text-xs font-medium text-gray-500 mb-1">DL / ID #</label>
+                <input value={sellerIdNumber} onChange={e => setSellerIdNumber(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+            </div>
           </div>
 
           {/* Section toggles */}
@@ -1672,7 +1701,11 @@ function NewPurchaseForm() {
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => router.back()}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading}
+            <button type="submit" disabled={loading} onClick={() => { printAfterSave.current = true }}
+              className="px-4 py-2 border border-amber-600 text-amber-700 rounded-md text-sm font-medium hover:bg-amber-50 disabled:opacity-50">
+              {loading ? "Saving..." : editId ? "Save & Print" : "Record & Print"}
+            </button>
+            <button type="submit" disabled={loading} onClick={() => { printAfterSave.current = false }}
               className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
               {loading ? "Saving..." : editId ? "Save Changes" : `Record ${lineItems.length + diamondItems.length + jewelryItems.length} Item${lineItems.length + diamondItems.length + jewelryItems.length > 1 ? "s" : ""}`}
             </button>

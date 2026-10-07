@@ -27,7 +27,7 @@ export async function GET(
   const purchase = await prisma.purchase.findUnique({
     where: { id },
     include: {
-      lead: { select: { id: true, name: true, phone: true, email: true } },
+      lead: { select: { id: true, name: true, phone: true, email: true, address: true, idNumber: true } },
       user: { select: { id: true, name: true, email: true } },
       inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } },
     },
@@ -65,7 +65,7 @@ export async function PUT(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const { purchaseDate, notes, paymentMethod, items, removeItemIds, newItems } = await request.json()
+  const { purchaseDate, notes, paymentMethod, items, removeItemIds, newItems, seller } = await request.json()
 
   const paymentMethodJson = paymentMethod?.length ? JSON.stringify(paymentMethod) : null
 
@@ -82,6 +82,17 @@ export async function PUT(
   // Removals, edits and added lines are saved together: all or nothing
   try {
     await prisma.$transaction(async (tx) => {
+      // Seller address / DL# for the bill of sale
+      if (seller) {
+        await tx.lead.update({
+          where: { id: original.leadId },
+          data: {
+            address: (seller.address || "").trim() || null,
+            idNumber: (seller.idNumber || "").trim() || null,
+          },
+        })
+      }
+
       // Delete removed items and reverse their inventory effects
       for (const removeId of removeItemIds ?? []) {
         const purchase = await tx.purchase.findUnique({ where: { id: removeId } })
@@ -220,7 +231,7 @@ export async function PUT(
   let purchase = await prisma.purchase.findUnique({
     where: { id },
     include: {
-      lead: { select: { id: true, name: true, phone: true, email: true } },
+      lead: { select: { id: true, name: true, phone: true, email: true, address: true, idNumber: true } },
       inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } },
     },
   })
@@ -228,7 +239,7 @@ export async function PUT(
     purchase = await prisma.purchase.findFirst({
       where: { purchaseNumber },
       include: {
-        lead: { select: { id: true, name: true, phone: true, email: true } },
+        lead: { select: { id: true, name: true, phone: true, email: true, address: true, idNumber: true } },
         inventoryItem: { include: { diamondDetails: true, jewelryDetails: true, watchDetails: true } },
       },
     })

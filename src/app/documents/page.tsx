@@ -259,6 +259,7 @@ export default function DocumentsPage() {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Seller</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
+                        <th className="px-3 py-3"><span className="sr-only">Print</span></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -289,6 +290,13 @@ export default function DocumentsPage() {
                               <td className="px-6 py-4 text-sm font-medium text-gray-900">{p.lead.name}</td>
                               <td className="px-6 py-4 text-sm text-gray-600">{desc}</td>
                               <td className="px-6 py-4 text-sm font-bold text-amber-600 text-right">${total.toFixed(2)}</td>
+                              <td className="px-3 py-4 text-right">
+                                <button type="button" title="Print bill of sale"
+                                  onClick={e => { e.stopPropagation(); router.push(`/purchases/${p.id}?print=1`) }}
+                                  className="px-2.5 py-1 text-xs font-medium text-amber-700 border border-amber-300 rounded hover:bg-amber-50">
+                                  Print
+                                </button>
+                              </td>
                             </tr>
                           )
                         })

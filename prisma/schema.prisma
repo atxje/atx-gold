@@ -104,6 +104,8 @@ model Lead {
   name         String
   phone        String?
   email        String?
+  address      String?     // seller's street address, for the bill of sale
+  idNumber     String?     // driver's license / ID number, for the bill of sale
   notes        String?     @db.Text
   source       LeadSource  @default(ORGANIC)
   channel      LeadChannel @default(PHONE)

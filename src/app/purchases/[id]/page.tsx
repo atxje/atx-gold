@@ -8,7 +8,7 @@ import { Navbar } from "@/components/navbar"
 import { BUSINESS } from "@/lib/business"
 import { arrowNav } from "@/lib/table-nav"
 import { formatPurchaseDate, purchaseDateKey } from "@/lib/purchase-date"
-import { BillOfSale } from "@/components/bill-of-sale"
+import { BillOfSale, billOfSaleFromPurchase } from "@/components/bill-of-sale"
 
 interface PurchaseItem {
   id: string
@@ -39,6 +39,7 @@ interface Purchase {
   lead: { id: string; name: string; phone: string | null; email: string | null; address?: string | null; idNumber?: string | null }
   user?: { id: string; name: string | null; email: string } | null
   createdAt?: string
+  ticketId?: string | null
   items: PurchaseItem[]
 }
 
@@ -258,6 +259,13 @@ export default function PurchaseDetailPage() {
                     </button>
                   </>
                 ) : null}
+                {purchase.ticketId && (
+                  <Link href={`/purchases/quick/${purchase.ticketId}`}
+                    title="The short ticket the customer signed"
+                    className="px-4 py-2 border border-amber-300 rounded-md text-sm font-medium text-amber-700 hover:bg-amber-50">
+                    Signed Ticket
+                  </Link>
+                )}
                 <button onClick={() => window.print()}
                   className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700">
                   Print Bill of Sale
@@ -276,7 +284,7 @@ export default function PurchaseDetailPage() {
           recordedAt={purchase.items[0]?.createdAt ?? purchase.createdAt ?? null}
           seller={purchase.lead}
           buyerName={purchase.user?.name ?? null}
-          items={purchase.items}
+          {...billOfSaleFromPurchase(purchase.items)}
           payments={payments}
         />
       )}

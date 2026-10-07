@@ -200,6 +200,7 @@ function NewPurchaseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get("editId")
+  const ticketId = searchParams.get("ticketId") // completing a signed quick ticket
   const preselectedLeadId = searchParams.get("leadId")
 
   const [categories, setCategories] = useState<Record<string, CategoryDef>>({})
@@ -225,6 +226,7 @@ function NewPurchaseForm() {
   const scanOverride = useRef<{ address: string; idNumber: string } | null>(null)
   const [purchaseDate, setPurchaseDate] = useState(todayInputValue())
   const [ticketTotal, setTicketTotal] = useState("")
+  const [fromTicket, setFromTicket] = useState<{ id: string; purchaseNumber: string; total: number } | null>(null)
   const [notes, setNotes] = useState("")
   const [editPurchaseNumber, setEditPurchaseNumber] = useState("")
   const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
@@ -330,6 +332,48 @@ function NewPurchaseForm() {
         setCategories(map)
         return map
       })
+      if (ticketId && !editId) {
+        catPromise.then(async (catMap) => {
+          const res = await fetch(`/api/quick-tickets/${ticketId}`)
+          if (!res.ok) { setError("Couldn't load the quick ticket"); return }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const t: any = await res.json()
+          if (t.status !== "OPEN") { setError(`Ticket ${t.purchaseNumber} was already completed`); return }
+          setFromTicket({ id: t.id, purchaseNumber: t.purchaseNumber, total: t.total })
+          setIsNewLead(false)
+          setSelectedLeadId(t.lead.id)
+          setPurchaseDate(purchaseDateKey(t.purchaseDate))
+          setNotes(t.notes || "")
+          setTicketTotal(String(t.total))
+          try {
+            const pm = t.paymentMethod ? JSON.parse(t.paymentMethod) : []
+            if (Array.isArray(pm)) setPayments(pm.map((p: { method: string; amount: number }) => ({ method: p.method, amount: String(p.amount) })))
+          } catch {}
+          // Ticket lines → rows in the right section, prices left blank to fill in
+          const regular: LineItem[] = [], diamonds: LineItem[] = [], jewelry: LineItem[] = [], watches: LineItem[] = []
+          for (const l of (t.lines || []) as { categoryId: string | null; category: string; type: string | null; quantity?: number | null; weight: number | null; description: string | null }[]) {
+            const catId = (l.categoryId && catMap[l.categoryId]) ? l.categoryId
+              : (Object.entries(catMap).find(([, c]) => c.label === l.category)?.[0] || "")
+            const def = catMap[catId]
+            const row: LineItem = {
+              ...newLineItem(getNextId()),
+              category: catId,
+              subcategory: l.type || "",
+              quantity: l.quantity ? String(l.quantity) : "",
+              weight: l.weight ? String(l.weight) : "",
+              description: l.description || "",
+            }
+            if (def?.metalType === "DIAMOND") diamonds.push({ ...row, diamondData: { ...emptyDiamondData } })
+            else if (def?.metalType === "JEWELRY") jewelry.push({ ...row, jewelryData: { ...emptyJewelryData, weight: row.weight, description: row.description } })
+            else if (def?.metalType === "WATCH") watches.push({ ...row, watchData: { ...emptyWatchData, description: row.description } })
+            else regular.push(row)
+          }
+          setLineItems(regular.length ? regular : [newLineItem(getNextId())])
+          if (diamonds.length) { setDiamondItems(diamonds); setShowDiamonds(true) }
+          if (jewelry.length) { setJewelryItems(jewelry); setShowJewelry(true) }
+          if (watches.length) { setWatchItems(watches); setShowWatches(true) }
+        })
+      }
       if (editId) {
         catPromise.then(async (catMap) => {
           const res = await fetch(`/api/purchases/${editId}`)
@@ -996,6 +1040,13 @@ function NewPurchaseForm() {
       }
 
       if (isNewLead && !newLeadName) throw new Error("Seller name is required")
+      if (fromTicket && Math.abs(grandTotal - fromTicket.total) > 0.005) {
+        const ok = confirm(
+          `The customer signed ticket ${fromTicket.purchaseNumber} for $${fromTicket.total.toFixed(2)}, ` +
+          `but these items add up to $${grandTotal.toFixed(2)}.\n\nSave anyway?`
+        )
+        if (!ok) { setLoading(false); return }
+      }
 
       // Filter out empty rows (no weight and no price) and validate the rest
       const isRowFilled = (item: LineItem) => {
@@ -1031,6 +1082,7 @@ function NewPurchaseForm() {
             ? { newLead: { name: newLeadName, phone: newLeadPhone || null, email: newLeadEmail || null, source: newLeadSource, channel: newLeadChannel } }
             : { leadId: selectedLeadId }),
           seller: { address: sellerAddress, idNumber: sellerIdNumber, phone: newLeadPhone, email: newLeadEmail, source: newLeadSource, channel: newLeadChannel },
+          ...(fromTicket && { ticketId: fromTicket.id }),
           purchaseDate,
           notes: notes || null,
           paymentMethod: paymentData,
@@ -1057,7 +1109,14 @@ function NewPurchaseForm() {
       <main className={`mx-auto px-4 py-8 ${showDiamonds ? "max-w-[1400px]" : "max-w-6xl"}`}>
         <div className="mb-6">
           <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Purchase${editPurchaseNumber ? ` — ${editPurchaseNumber}` : ""}` : "Record Purchase"}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Purchase${editPurchaseNumber ? ` — ${editPurchaseNumber}` : ""}` : fromTicket ? `Complete Purchase — ${fromTicket.purchaseNumber}` : "Record Purchase"}</h1>
+          {fromTicket && (
+            <div className="mt-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+              Completing quick ticket <b>{fromTicket.purchaseNumber}</b>. The customer signed for{" "}
+              <b>${fromTicket.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</b> — add the prices and details below.
+              It's saved under the same number; you'll get a warning if the items don't add up to the signed total.
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

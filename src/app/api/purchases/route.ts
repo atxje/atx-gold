@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { leadId: bodyLeadId, newLead, purchaseDate, notes, paymentMethod, purchaseNumber: providedNumber, seller } = body
+    const { leadId: bodyLeadId, newLead, purchaseDate, notes, paymentMethod, purchaseNumber: providedNumber, seller, ticketId } = body
     // Seller contact details (address, DL#, phone, email, source, channel)
     const sellerDetails = parseSellerFields(seller)
     const lines: PurchaseLineInput[] = Array.isArray(body.items) ? body.items : [body]
@@ -114,7 +114,22 @@ export async function POST(request: Request) {
         leadStatus = lead.status
       }
 
-      const purchaseNumber = providedNumber || (await nextPurchaseNumber(tx))
+      // Completing a quick ticket: the purchase takes over the ticket's number,
+      // and the ticket is marked completed in this same transaction
+      let purchaseNumber: string
+      if (ticketId) {
+        const ticket = await tx.quickTicket.findUnique({ where: { id: ticketId }, select: { purchaseNumber: true, status: true } })
+        if (!ticket) throw new PurchaseInputError("Quick ticket not found")
+        if (ticket.status !== "OPEN") throw new PurchaseInputError(`Ticket ${ticket.purchaseNumber} was already completed`)
+        const claimed = await tx.quickTicket.updateMany({
+          where: { id: ticketId, status: "OPEN" },
+          data: { status: "COMPLETED", completedAt: new Date() },
+        })
+        if (claimed.count !== 1) throw new PurchaseInputError(`Ticket ${ticket.purchaseNumber} was already completed`)
+        purchaseNumber = ticket.purchaseNumber
+      } else {
+        purchaseNumber = providedNumber || (await nextPurchaseNumber(tx))
+      }
       const header = {
         purchaseNumber,
         leadId,

@@ -2,27 +2,25 @@ import { BUSINESS } from "@/lib/business"
 import { formatPurchaseDate } from "@/lib/purchase-date"
 import { BILL_OF_SALE_TITLE, SELLER_DISCLAIMER, FOOTER_DISCLAIMER } from "@/lib/bill-of-sale-text"
 
-// Print-only bill of sale for one purchase document. Rendered hidden on screen
-// (`hidden print:block`); the on-screen purchase view is hidden when printing.
+// Print-only bill of sale (hidden on screen via `hidden print:block`).
+// Lists what was sold without per-item prices: each category shows its lines
+// (type, description, qty, weight) and one amount; then the grand total.
+// Used for quick tickets and for full purchases.
 
-export interface BillOfSaleItem {
-  id: string
-  description: string
-  metalType?: string
-  category?: string | null
-  subcategory?: string | null
-  quantity: number
-  weight: number
-  weightUnit: string
-  pricePaid: number
-  createdAt?: string
-  inventoryItem?: { itemCode: string | null } | null
+export interface BillOfSaleLine {
+  key: string
+  category: string
+  type?: string | null
+  description?: string | null
+  quantity?: number | null
+  weight?: number | null
+  weightUnit?: string | null
 }
 
 export interface BillOfSaleProps {
   purchaseNumber: string | null
   purchaseDate: string
-  recordedAt: string | null // when the purchase was entered (for the time)
+  recordedAt: string | null // when it was entered (for the time)
   seller: {
     name: string
     address?: string | null
@@ -31,13 +29,14 @@ export interface BillOfSaleProps {
     idNumber?: string | null
   }
   buyerName?: string | null // employee who made the purchase
-  items: BillOfSaleItem[]
+  lines: BillOfSaleLine[]
+  categoryTotals: { category: string; amount: number }[]
   payments: { method: string; amount: number }[]
 }
 
 const UNIT: Record<string, string> = { GRAM: "g", TROY_OZ: "ozt", CARAT: "ct" }
 
-const METAL_LABEL: Record<string, string> = {
+export const METAL_LABEL: Record<string, string> = {
   GOLD: "Gold", SILVER: "Silver", PLATINUM: "Platinum", PALLADIUM: "Palladium",
   DIAMOND: "Diamonds", JEWELRY: "Jewelry", WATCH: "Watches", OTHER: "Other",
 }
@@ -47,7 +46,6 @@ const money = (n: number) => n.toLocaleString("en-US", { style: "currency", curr
 const fmtWeight = (w: number, unit: string) =>
   `${w.toLocaleString("en-US", { maximumFractionDigits: 3 })} ${UNIT[unit] || unit}`
 
-// Time the purchase was recorded, in the store's timezone
 function formatTime(iso: string | null): string {
   if (!iso) return ""
   return new Date(iso).toLocaleTimeString("en-US", {
@@ -55,24 +53,21 @@ function formatTime(iso: string | null): string {
   })
 }
 
-// Group lines by category (Scrap Gold, Coins, Silverware…), keeping the order
-// in which each category first appears on the purchase
-function groupByCategory(items: BillOfSaleItem[]) {
-  const groups: { name: string; items: BillOfSaleItem[]; total: number; weights: Record<string, number> }[] = []
-  for (const item of items) {
-    const name = item.category || METAL_LABEL[item.metalType ?? ""] || "Other"
-    let g = groups.find(x => x.name === name)
-    if (!g) { g = { name, items: [], total: 0, weights: {} }; groups.push(g) }
-    g.items.push(item)
-    g.total += item.pricePaid
-    g.weights[item.weightUnit] = (g.weights[item.weightUnit] || 0) + item.weight
-  }
-  return groups
-}
-
 export function BillOfSale(p: BillOfSaleProps) {
-  const groups = groupByCategory(p.items)
-  const total = p.items.reduce((s, i) => s + i.pricePaid, 0)
+  // Categories in the order given, plus any that only appear on lines
+  const order = [...p.categoryTotals.map(t => t.category)]
+  for (const l of p.lines) if (!order.includes(l.category)) order.push(l.category)
+  const groups = order.map(name => {
+    const lines = p.lines.filter(l => l.category === name)
+    const weights: Record<string, number> = {}
+    for (const l of lines) if (l.weight != null && l.weight > 0) {
+      const u = l.weightUnit || "GRAM"
+      weights[u] = (weights[u] || 0) + l.weight
+    }
+    const amount = p.categoryTotals.find(t => t.category === name)?.amount ?? 0
+    return { name, lines, weights, amount }
+  })
+  const total = p.categoryTotals.reduce((s, t) => s + t.amount, 0)
   const paidTotal = p.payments.reduce((s, x) => s + (x.amount || 0), 0)
   const time = formatTime(p.recordedAt)
 
@@ -109,7 +104,7 @@ export function BillOfSale(p: BillOfSaleProps) {
         </div>
       </div>
 
-      {/* Items by category */}
+      {/* Items by category — one amount per category, no per-item prices */}
       <div className="mt-5">
         <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Items Purchased</div>
         <table className="w-full border-collapse">
@@ -118,7 +113,7 @@ export function BillOfSale(p: BillOfSaleProps) {
               <th className="py-1 pr-2 font-semibold w-[18%]">Type</th>
               <th className="py-1 pr-2 font-semibold">Description</th>
               <th className="py-1 pr-2 font-semibold text-right w-[8%]">Qty</th>
-              <th className="py-1 pr-2 font-semibold text-right w-[14%]">Weight</th>
+              <th className="py-1 pr-2 font-semibold text-right w-[15%]">Weight</th>
               <th className="py-1 font-semibold text-right w-[15%]">Amount</th>
             </tr>
           </thead>
@@ -127,15 +122,15 @@ export function BillOfSale(p: BillOfSaleProps) {
               <tr>
                 <td colSpan={5} className="pt-2.5 pb-1 font-bold">{g.name}</td>
               </tr>
-              {g.items.map(i => (
-                <tr key={i.id} className="border-b border-gray-200">
-                  <td className="py-1 pr-2 align-top">
-                    {i.inventoryItem?.itemCode ? i.inventoryItem.itemCode : (i.subcategory || "—")}
+              {g.lines.map(l => (
+                <tr key={l.key} className="border-b border-gray-200">
+                  <td className="py-1 pr-2 align-top">{l.type || "—"}</td>
+                  <td className="py-1 pr-2 align-top">{l.description || ""}</td>
+                  <td className="py-1 pr-2 align-top text-right">{l.quantity && l.quantity > 0 ? l.quantity : ""}</td>
+                  <td className="py-1 pr-2 align-top text-right whitespace-nowrap">
+                    {l.weight != null && l.weight > 0 ? fmtWeight(l.weight, l.weightUnit || "GRAM") : ""}
                   </td>
-                  <td className="py-1 pr-2 align-top">{i.description}</td>
-                  <td className="py-1 pr-2 align-top text-right">{i.quantity > 0 ? i.quantity : ""}</td>
-                  <td className="py-1 pr-2 align-top text-right whitespace-nowrap">{fmtWeight(i.weight, i.weightUnit)}</td>
-                  <td className="py-1 align-top text-right whitespace-nowrap">{money(i.pricePaid)}</td>
+                  <td className="py-1 align-top" />
                 </tr>
               ))}
               <tr className="border-b border-gray-400">
@@ -143,7 +138,7 @@ export function BillOfSale(p: BillOfSaleProps) {
                 <td className="py-1 pr-2 text-right font-semibold whitespace-nowrap">
                   {Object.entries(g.weights).map(([u, w]) => fmtWeight(w, u)).join(" + ")}
                 </td>
-                <td className="py-1 text-right font-semibold whitespace-nowrap">{money(g.total)}</td>
+                <td className="py-1 text-right font-semibold whitespace-nowrap">{money(g.amount)}</td>
               </tr>
             </tbody>
           ))}
@@ -207,4 +202,37 @@ export function BillOfSale(p: BillOfSaleProps) {
       )}
     </div>
   )
+}
+
+// Build bill-of-sale lines and category totals from full purchase rows
+export function billOfSaleFromPurchase(items: {
+  id: string
+  description: string
+  metalType?: string
+  category?: string | null
+  subcategory?: string | null
+  quantity: number
+  weight: number
+  weightUnit: string
+  pricePaid: number
+  inventoryItem?: { itemCode: string | null } | null
+}[]) {
+  const catName = (i: (typeof items)[number]) => i.category || METAL_LABEL[i.metalType ?? ""] || "Other"
+  const lines: BillOfSaleLine[] = items.map(i => ({
+    key: i.id,
+    category: catName(i),
+    type: i.inventoryItem?.itemCode || i.subcategory || null,
+    description: i.description,
+    quantity: i.quantity,
+    weight: i.weight,
+    weightUnit: i.weightUnit,
+  }))
+  const categoryTotals: { category: string; amount: number }[] = []
+  for (const i of items) {
+    const name = catName(i)
+    const t = categoryTotals.find(x => x.category === name)
+    if (t) t.amount += i.pricePaid
+    else categoryTotals.push({ category: name, amount: i.pricePaid })
+  }
+  return { lines, categoryTotals }
 }

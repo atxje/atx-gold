@@ -45,6 +45,11 @@ export async function GET(
     }) as typeof items
   }
 
+  // Signed quick ticket this purchase was completed from (for reprinting)
+  const ticket = purchase.purchaseNumber
+    ? await prisma.quickTicket.findUnique({ where: { purchaseNumber: purchase.purchaseNumber }, select: { id: true } })
+    : null
+
   // Compensation earned on each line: a flat 10% of its gross profit
   const itemsWithComp = items.map((i) => ({
     ...i,
@@ -53,9 +58,9 @@ export async function GET(
 
   // Overpay flags are admin-only — strip them for everyone else
   if (session.user.role !== "ADMIN") {
-    return NextResponse.json({ ...stripOverpay(purchase), items: itemsWithComp.map(stripOverpay) })
+    return NextResponse.json({ ...stripOverpay(purchase), items: itemsWithComp.map(stripOverpay), ticketId: ticket?.id ?? null })
   }
-  return NextResponse.json({ ...purchase, items: itemsWithComp })
+  return NextResponse.json({ ...purchase, items: itemsWithComp, ticketId: ticket?.id ?? null })
 }
 
 export async function PUT(
@@ -316,6 +321,18 @@ export async function DELETE(
       }
 
       await tx.purchase.deleteMany({ where: { id: { in: toDelete.map((p) => p.id) } } })
+
+      // Deleting a purchase that came from a signed ticket puts the ticket back
+      // on the To Finish list instead of leaving a gap in the paperwork
+      if (target.purchaseNumber) {
+        const left = await tx.purchase.count({ where: { purchaseNumber: target.purchaseNumber } })
+        if (left === 0) {
+          await tx.quickTicket.updateMany({
+            where: { purchaseNumber: target.purchaseNumber, status: "COMPLETED" },
+            data: { status: "OPEN", completedAt: null },
+          })
+        }
+      }
 
       // Remove now-orphaned coded items (jewelry/diamond/watch); details cascade
       for (const itemId of itemIds) {

@@ -34,9 +34,15 @@ const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")
 export async function nextPurchaseNumber(tx: Tx): Promise<string> {
   await lock(tx, LOCKS.purchase)
   const pattern = "^PUR-[0-9]+$"
+  // Quick tickets reserve PUR numbers too, so look at both tables
   const rows = await tx.$queryRaw<{ max: number | null }[]>`
-    SELECT MAX(CAST(SUBSTRING("purchaseNumber" FROM '[0-9]+$') AS INTEGER)) AS "max"
-    FROM "Purchase" WHERE "purchaseNumber" ~ ${pattern}`
+    SELECT MAX(n) AS "max" FROM (
+      SELECT CAST(SUBSTRING("purchaseNumber" FROM '[0-9]+$') AS INTEGER) AS n
+        FROM "Purchase" WHERE "purchaseNumber" ~ ${pattern}
+      UNION ALL
+      SELECT CAST(SUBSTRING("purchaseNumber" FROM '[0-9]+$') AS INTEGER) AS n
+        FROM "QuickTicket" WHERE "purchaseNumber" ~ ${pattern}
+    ) t`
   const max = Number(rows[0]?.max ?? 0)
   return `PUR-${pad(max + 1)}`
 }

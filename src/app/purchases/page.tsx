@@ -67,6 +67,10 @@ export default function PurchasesPage() {
   const [flaggedOnly, setFlaggedOnly] = useState(false)
 
   const isAdmin = session?.user?.role === "ADMIN"
+  const [openTickets, setOpenTickets] = useState<{
+    id: string; purchaseNumber: string; purchaseDate: string; total: number
+    lead: { name: string }; user: { name: string | null } | null
+  }[]>([])
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -79,6 +83,12 @@ export default function PurchasesPage() {
       fetchPurchases()
     }
   }, [session, metalFilter])
+
+  // Signed quick tickets still waiting for their full details
+  useEffect(() => {
+    if (!session) return
+    fetch("/api/quick-tickets?status=OPEN").then(r => r.ok ? r.json() : []).then(setOpenTickets)
+  }, [session])
 
   async function fetchPurchases() {
     setLoading(true)
@@ -169,13 +179,43 @@ const filteredPurchases = useMemo(() => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Purchases</h1>
-          <Link
-            href="/purchases/new"
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Record Purchase
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href="/purchases/quick"
+              className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium"
+            >
+              Quick Ticket
+            </Link>
+            <Link
+              href="/purchases/new"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Record Purchase
+            </Link>
+          </div>
         </div>
+
+        {/* Quick tickets the customer signed that still need their full details */}
+        {openTickets.length > 0 && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <h2 className="font-semibold text-amber-900 mb-2">
+              To Finish <span className="ml-1 px-2 py-0.5 rounded-full bg-amber-600 text-white text-xs">{openTickets.length}</span>
+            </h2>
+            <div className="divide-y divide-amber-200">
+              {openTickets.map(t => (
+                <div key={t.id} className="flex items-center gap-4 py-2 text-sm">
+                  <Link href={`/purchases/quick/${t.id}`} className="font-semibold text-amber-700 hover:underline w-24">{t.purchaseNumber}</Link>
+                  <span className="text-gray-500 w-28">{formatPurchaseDate(t.purchaseDate)}</span>
+                  <span className="flex-1 font-medium text-gray-900">{t.lead.name}</span>
+                  <span className="text-gray-500 hidden sm:inline">{t.user?.name || ""}</span>
+                  <span className="font-bold text-gray-900 w-28 text-right">${t.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                  <Link href={`/purchases/new?ticketId=${t.id}`}
+                    className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-semibold hover:bg-amber-700">Complete →</Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

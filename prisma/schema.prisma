@@ -76,6 +76,7 @@ model User {
   leads        Lead[]
   appointments Appointment[]
   purchases    Purchase[]
+  quickTickets QuickTicket[]
 }
 
 enum LeadSource {
@@ -119,6 +120,7 @@ model Lead {
 
   appointments     Appointment[]
   purchases        Purchase[]
+  quickTickets     QuickTicket[]
   smsConversations SmsConversation[]
 
   @@index([status])
@@ -401,6 +403,38 @@ model Purchase {
   @@index([userId])
   @@index([purchaseDate])
   @@index([inventoryItemId])
+}
+
+enum TicketStatus {
+  OPEN       // signed by the customer, details not entered yet
+  COMPLETED  // turned into a full purchase (same purchaseNumber)
+}
+
+// Quick ticket: the short bill of sale the customer signs at the desk. It
+// reserves the purchase number; the full purchase is entered later and takes
+// over that number. The signed lines/totals are kept for reprinting.
+model QuickTicket {
+  id             String       @id @default(cuid())
+  purchaseNumber String       @unique
+  leadId         String
+  userId         String
+  purchaseDate   DateTime     @default(now())
+  lines          Json         // [{ categoryId, category, type, quantity, weight, weightUnit, description }]
+  categoryTotals Json         // [{ category, amount }]
+  total          Float
+  paymentMethod  String?      @db.Text // JSON [{ method, amount }]
+  notes          String?      @db.Text
+  status         TicketStatus @default(OPEN)
+  completedAt    DateTime?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([leadId])
 }
 
 // Singleton row: buying guidelines for the overpayment flag (admin-editable)

@@ -431,6 +431,12 @@ export default function Dashboard() {
               Schedule Appointment
             </Link>
             <Link
+              href="/purchases/quick"
+              className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700"
+            >
+              Quick Ticket
+            </Link>
+            <Link
               href="/purchases/new"
               className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
             >

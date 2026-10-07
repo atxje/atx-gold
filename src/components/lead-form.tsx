@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 
 interface LeadFormProps {
   lead?: {
@@ -29,6 +30,34 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [createdLeadId, setCreatedLeadId] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const [scanNotice, setScanNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null)
+
+  // Fill name / address / DL# from a scanned ID (inputs are uncontrolled)
+  function applyScannedId(id: ScannedId) {
+    const form = formRef.current
+    if (!form) return
+    const set = (name: string, value: string | null) => {
+      const el = form.elements.namedItem(name) as HTMLInputElement | null
+      if (el && value) el.value = value
+    }
+    const notes: string[] = []
+    const current = (form.elements.namedItem("name") as HTMLInputElement | null)?.value.trim() || ""
+    const norm = (x: string) => x.toLowerCase().replace(/[^a-z]/g, "")
+    if (id.name && current && norm(current) !== norm(id.name)) {
+      notes.push(`Name changed from "${current}" to "${id.name}" (as on the ID).`)
+    }
+    set("name", id.name)
+    set("address", id.address)
+    set("idNumber", id.idNumber)
+    const missing = [!id.name && "name", !id.address && "address", !id.idNumber && "DL #"].filter(Boolean)
+    if (missing.length) notes.push(`Couldn't read: ${missing.join(", ")} — please type ${missing.length > 1 ? "them" : "it"} in.`)
+    if (id.expired) {
+      setScanNotice({ tone: "warn", text: `⚠ This ID expired on ${id.expirationDate}. ${notes.join(" ")}`.trim() })
+    } else {
+      setScanNotice({ tone: notes.length ? "warn" : "ok", text: ["ID read — please check the details below.", ...notes].join(" ") })
+    }
+  }
 
   const isEdit = !!lead
 
@@ -103,9 +132,18 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="bg-red-50 text-red-500 p-3 rounded text-sm">{error}</div>
+      )}
+
+      <div className="flex justify-end">
+        <ScanIdButton onScanned={applyScannedId} />
+      </div>
+      {scanNotice && (
+        <div className={`px-3 py-2 rounded text-sm ${scanNotice.tone === "warn" ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-green-50 text-green-800 border border-green-200"}`}>
+          {scanNotice.text}
+        </div>
       )}
 
       <div>

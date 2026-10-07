@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
+import { Select } from "@/components/select"
 
 interface LeadFormProps {
   lead?: {
@@ -46,7 +47,6 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
     const norm = (x: string) => x.toLowerCase().replace(/[^a-z]/g, "")
     if (id.name && current && norm(current) !== norm(id.name)) {
       notes.push(`Name changed from "${current}" to "${id.name}" (as on the ID).`)
-import { Select } from "@/components/select"
     }
     set("name", id.name)
     set("address", id.address)

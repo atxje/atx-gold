@@ -39,13 +39,13 @@ function textOf(node: React.ReactNode): string {
 
 function filterOptions(options: Opt[], q: string): Opt[] {
   if (!q) return options
-  const starts = options.filter(o => o.label.toLowerCase().startsWith(q))
-  const contains = options.filter(o => !o.label.toLowerCase().startsWith(q) && o.label.toLowerCase().includes(q))
+  const starts = options.filter((o: Opt) => o.label.toLowerCase().startsWith(q))
+  const contains = options.filter((o: Opt) => !o.label.toLowerCase().startsWith(q) && o.label.toLowerCase().includes(q))
   return [...starts, ...contains]
 }
 
 function collectOptions(children: React.ReactNode, out: Opt[] = []): Opt[] {
-  React.Children.forEach(children, child => {
+  React.Children.forEach(children, (child: React.ReactNode) => {
     if (!React.isValidElement(child)) return
     const props = child.props as { value?: string | number; children?: React.ReactNode; disabled?: boolean }
     if (child.type === "option") {
@@ -78,7 +78,7 @@ export function Select({
   value, defaultValue, onChange, name, id, required, disabled, className = "", title, autoFocus, children,
   "aria-label": ariaLabel,
 }: SelectProps) {
-  const options = useMemo(() => collectOptions(children), [children])
+  const options: Opt[] = useMemo(() => collectOptions(children), [children])
   const controlled = value !== undefined
   const [inner, setInner] = useState(defaultValue != null ? String(defaultValue) : (options[0]?.value ?? ""))
   const current = controlled ? String(value ?? "") : inner
@@ -116,7 +116,7 @@ export function Select({
 
   const selected = options.find(o => o.value === current)
   const q = query.trim().toLowerCase()
-  const shown = useMemo(() => filterOptions(options, q), [options, q])
+  const shown: Opt[] = useMemo(() => filterOptions(options, q), [options, q])
 
   // Open (or re-filter) and set the highlight in the same update, so fast
   // key presses never race a later highlight reset

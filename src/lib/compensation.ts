@@ -1,5 +1,6 @@
 import { prisma } from "./prisma"
 import { getSpotPrices, SpotPrices } from "./spot"
+import { ninetyPctFaceValue } from "./coins"
 
 export const GRAMS_PER_TROY_OZ = 31.1035
 
@@ -39,8 +40,15 @@ const SILVER_COIN_UNDER_SPOT = 5
 // default (spot − $5/oz)
 export const SILVER_COIN_SPECIAL: Record<string, { purity: number; factor: number }> = {
   "Silver Dollar (Peace/Morgan)": { purity: 0.98, factor: 0.85 },
-  "US coins 90%": { purity: 0.98, factor: 0.85 },
+  "US coins 90%": { purity: 0.98, factor: 0.85 }, // older name, kept for past purchases
   "US coins 40%": { purity: 0.98, factor: 0.85 },
+}
+
+// Junk/90% silver rule for a coin subcategory: listed above, or any of the
+// 90% Half Dollars / Quarters / Dimes types
+export function silverCoinSpecial(subcategory: string | null | undefined): { purity: number; factor: number } | undefined {
+  const s = subcategory ?? ""
+  return SILVER_COIN_SPECIAL[s] ?? (ninetyPctFaceValue(s) != null ? SILVER_COIN_SPECIAL["US coins 90%"] : undefined)
 }
 
 // Platinum scrap / jewelry: 88% purity × 90% of spot. Coins: full purity × 98% of spot.
@@ -77,7 +85,7 @@ export function compValue(input: CompInput, spot: SpotPrices): number | null {
     }
     case "SILVER": {
       if (weightUnit === "TROY_OZ") {
-        const special = SILVER_COIN_SPECIAL[input.subcategory ?? ""]
+        const special = silverCoinSpecial(input.subcategory)
         if (special) return weight * special.purity * special.factor * spot.silver
         return weight * Math.max(0, spot.silver - SILVER_COIN_UNDER_SPOT)
       }

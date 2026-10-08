@@ -82,6 +82,8 @@ const GOLD_BULLION_PURITY: Record<string, number> = {
 }
 const SILVER_BULLION_PURITY: Record<string, number> = {
   "Silver Eagle": 1, "Silver Buffalo": 1, "Silver Generics": 0.999, "Silver Dollar (Peace/Morgan)": 1,
+  // 90% coins are logged as net t oz of silver
+  "90% Half Dollars": 1, "90% Quarters": 1, "90% Dimes": 1,
 }
 const JEWELRY_METAL_INFO: Record<string, { metal: "gold" | "silver"; purity: number; payRate: number }> = {
   "10K": { metal: "gold", purity: 0.395, payRate: GOLD_SCRAP_PAY_RATE },

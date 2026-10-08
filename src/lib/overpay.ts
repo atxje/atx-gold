@@ -5,7 +5,7 @@ import {
   GOLD_PURITY,
   karatPurity,
   SILVER_SCRAP_PURITY,
-  SILVER_COIN_SPECIAL,
+  silverCoinSpecial,
   PLAT_SCRAP_PURITY,
 } from "./compensation"
 
@@ -105,7 +105,7 @@ export function evaluateOverpay(
       if (weightUnit === "TROY_OZ") {
         // Junk/90% subcategories (Peace/Morgan, US 90%/40%) get their own
         // threshold — same classification as SILVER_COIN_SPECIAL in comp
-        const isJunk = SILVER_COIN_SPECIAL[input.subcategory ?? ""] !== undefined
+        const isJunk = silverCoinSpecial(input.subcategory) !== undefined
         return coinRule(
           spot.silver,
           isJunk ? g.maxUnderSpotSilverJunk : g.maxUnderSpotSilverCoins,

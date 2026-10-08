@@ -8,6 +8,7 @@ import { Navbar } from "@/components/navbar"
 import { Select } from "@/components/select"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 import { todayInputValue } from "@/lib/purchase-date"
+import { ninetyPctNetOzt } from "@/lib/coins"
 
 // Quick Ticket — the fast version used with the customer at the desk:
 // seller, what they sold (category / type / optional weight), one amount per
@@ -120,7 +121,16 @@ export default function QuickTicketPage() {
   const catById = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])), [categories])
   function updateLine(key: number, patch: Partial<Line>) {
     setLines(prev => {
-      const next = prev.map(l => l.key === key ? { ...l, ...patch, ...(patch.categoryId !== undefined ? { type: "" } : {}) } : l)
+      const next = prev.map(l => {
+        if (l.key !== key) return l
+        const u = { ...l, ...patch, ...(patch.categoryId !== undefined ? { type: "" } : {}) }
+        // 90% coins: weight = 0.715 t oz per $1 face, from the count
+        if (patch.quantity !== undefined || patch.type !== undefined) {
+          const oz = ninetyPctNetOzt(u.type, parseInt(u.quantity) || 0)
+          if (oz != null) u.weight = String(oz)
+        }
+        return u
+      })
       // Always keep one empty row at the bottom, ready for the next item
       const last = next[next.length - 1]
       if (last.categoryId) next.push(blankLine())

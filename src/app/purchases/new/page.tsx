@@ -1382,7 +1382,7 @@ function NewPurchaseForm() {
                         <td className="px-1 text-center align-middle w-8">
                           {lineItems.length > 1 && (
                             <button type="button" onClick={() => removeLineItem(item.id)}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              className="text-gray-400 hover:text-red-500 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity text-2xl leading-none px-2 py-1 -my-1" title="Remove row" aria-label="Remove row">
                               x
                             </button>
                           )}
@@ -1524,7 +1524,7 @@ function NewPurchaseForm() {
                           </td>
                           <td className="px-1 text-center align-middle w-8">
                             <button type="button" onClick={() => removeDiamondRow(item.id)}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              className="text-gray-400 hover:text-red-500 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity text-2xl leading-none px-2 py-1 -my-1" title="Remove row" aria-label="Remove row">
                               ×
                             </button>
                           </td>
@@ -1628,7 +1628,7 @@ function NewPurchaseForm() {
                           </td>
                           <td className="px-1 text-center align-middle w-8">
                             <button type="button" onClick={() => removeJewelryRow(item.id)}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              className="text-gray-400 hover:text-red-500 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity text-2xl leading-none px-2 py-1 -my-1" title="Remove row" aria-label="Remove row">
                               ×
                             </button>
                           </td>
@@ -1735,7 +1735,7 @@ function NewPurchaseForm() {
                           </td>
                           <td className="px-1 text-center align-middle w-8">
                             <button type="button" onClick={() => removeWatchRow(item.id)}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              className="text-gray-400 hover:text-red-500 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity text-2xl leading-none px-2 py-1 -my-1" title="Remove row" aria-label="Remove row">
                               ×
                             </button>
                           </td>

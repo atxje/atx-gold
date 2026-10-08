@@ -319,7 +319,7 @@ function MixContent() {
                         <td className="px-2 text-center align-top pt-2 w-8">
                           {sources.length > 1 && (
                             <button type="button" onClick={() => setSources(p => p.filter(r => r.id !== row.id))}
-                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                              className="text-gray-400 hover:text-red-500 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity text-2xl leading-none px-2 py-1 -my-1" title="Remove row" aria-label="Remove row">
                               ×
                             </button>
                           )}

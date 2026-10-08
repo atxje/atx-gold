@@ -520,7 +520,7 @@ function NewMemoContent() {
           <td className="px-2 text-center align-middle w-8">
             {(lineItems.length > 1 || editId) && (
               <button type="button" onClick={() => removeItem(item.id)}
-                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-lg leading-none">
+                className="text-gray-400 hover:text-red-500 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity text-2xl leading-none px-2 py-1 -my-1" title="Remove row" aria-label="Remove row">
                 ×
               </button>
             )}

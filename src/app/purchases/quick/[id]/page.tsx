@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
 import { BillOfSale } from "@/components/bill-of-sale"
+import { PrintOnArrival } from "@/components/print-on-arrival"
 import { formatPurchaseDate } from "@/lib/purchase-date"
 
 interface TicketLine {
@@ -49,15 +50,6 @@ export default function QuickTicketViewPage() {
     })
   }, [session, id])
 
-  // Arrived from "Save & Print": open the print dialog once loaded
-  const printed = useRef(false)
-  useEffect(() => {
-    if (!ticket || printed.current) return
-    if (new URLSearchParams(window.location.search).get("print") !== "1") return
-    printed.current = true
-    window.history.replaceState(null, "", window.location.pathname)
-    setTimeout(() => window.print(), 300)
-  }, [ticket])
 
   async function remove() {
     if (!ticket || !confirm(`Delete ticket ${ticket.purchaseNumber}? Use this only if the purchase didn't happen.`)) return
@@ -77,6 +69,7 @@ export default function QuickTicketViewPage() {
 
   return (
     <>
+      <PrintOnArrival ready={!!ticket} label="Ticket ready for signature" />
       <BillOfSale
         purchaseNumber={ticket.purchaseNumber}
         purchaseDate={ticket.purchaseDate}

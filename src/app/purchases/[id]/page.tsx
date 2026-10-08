@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
@@ -9,6 +9,7 @@ import { BUSINESS } from "@/lib/business"
 import { arrowNav } from "@/lib/table-nav"
 import { formatPurchaseDate, purchaseDateKey } from "@/lib/purchase-date"
 import { BillOfSale, billOfSaleFromPurchase } from "@/components/bill-of-sale"
+import { PrintOnArrival } from "@/components/print-on-arrival"
 
 interface PurchaseItem {
   id: string
@@ -94,16 +95,6 @@ export default function PurchaseDetailPage() {
     }
   }, [session, id])
 
-  // Arrived from "Record & Print" or a print button: open the print dialog
-  // once the purchase has loaded, then drop ?print=1 so a refresh won't reprint
-  const autoPrinted = useRef(false)
-  useEffect(() => {
-    if (!purchase || autoPrinted.current) return
-    if (new URLSearchParams(window.location.search).get("print") !== "1") return
-    autoPrinted.current = true
-    window.history.replaceState(null, "", window.location.pathname)
-    setTimeout(() => window.print(), 300)
-  }, [purchase])
 
   function startEdit() {
     if (!purchase) return
@@ -275,6 +266,8 @@ export default function PurchaseDetailPage() {
           </div>
         </div>
       </div>
+
+      <PrintOnArrival ready={!!purchase} />
 
       {/* Printed form — only visible when printing */}
       {!editMode && (

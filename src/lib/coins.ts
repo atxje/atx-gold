@@ -24,3 +24,28 @@ export function ninetyPctNetOzt(subcategory: string | null | undefined, quantity
   if (face == null || !(quantity > 0)) return null
   return Math.round(quantity * face * SILVER_OZT_PER_DOLLAR_FACE * 100000) / 100000
 }
+
+// US 40% silver half dollars (1965–1970 Kennedy): logged as a flat
+// 0.14 t oz of net silver per coin
+export const FORTY_PCT_HALF_OZT_PER_COIN = 0.14
+
+export function isFortyPctHalf(subcategory: string | null | undefined): boolean {
+  const s = (subcategory ?? "").toLowerCase()
+  return s.includes("40") && s.includes("half")
+}
+
+// Net t oz of silver per coin for any coin type that's bought by count
+// (90% halves/quarters/dimes, 40% halves), or null for other types
+export function coinOztPerCoin(subcategory: string | null | undefined): number | null {
+  const face = ninetyPctFaceValue(subcategory)
+  if (face != null) return face * SILVER_OZT_PER_DOLLAR_FACE
+  if (isFortyPctHalf(subcategory)) return FORTY_PCT_HALF_OZT_PER_COIN
+  return null
+}
+
+// Weight (net t oz) for a count of coins bought by count, or null
+export function coinNetOzt(subcategory: string | null | undefined, quantity: number): number | null {
+  const per = coinOztPerCoin(subcategory)
+  if (per == null || !(quantity > 0)) return null
+  return Math.round(quantity * per * 100000) / 100000
+}

@@ -8,7 +8,7 @@ import { Navbar } from "@/components/navbar"
 import { Select } from "@/components/select"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 import { todayInputValue } from "@/lib/purchase-date"
-import { ninetyPctNetOzt } from "@/lib/coins"
+import { coinNetOzt } from "@/lib/coins"
 
 // Quick Ticket — the fast version used with the customer at the desk:
 // seller, what they sold (category / type / optional weight), one amount per
@@ -124,9 +124,9 @@ export default function QuickTicketPage() {
       const next = prev.map(l => {
         if (l.key !== key) return l
         const u = { ...l, ...patch, ...(patch.categoryId !== undefined ? { type: "" } : {}) }
-        // 90% coins: weight = 0.715 t oz per $1 face, from the count
+        // Coins bought by count: weight (net t oz) from the count
         if (patch.quantity !== undefined || patch.type !== undefined) {
-          const oz = ninetyPctNetOzt(u.type, parseInt(u.quantity) || 0)
+          const oz = coinNetOzt(u.type, parseInt(u.quantity) || 0)
           if (oz != null) u.weight = String(oz)
         }
         return u

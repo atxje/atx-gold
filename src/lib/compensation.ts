@@ -1,6 +1,6 @@
 import { prisma } from "./prisma"
 import { getSpotPrices, SpotPrices } from "./spot"
-import { ninetyPctFaceValue } from "./coins"
+import { ninetyPctFaceValue, isFortyPctHalf } from "./coins"
 
 export const GRAMS_PER_TROY_OZ = 31.1035
 
@@ -48,7 +48,10 @@ export const SILVER_COIN_SPECIAL: Record<string, { purity: number; factor: numbe
 // 90% Half Dollars / Quarters / Dimes types
 export function silverCoinSpecial(subcategory: string | null | undefined): { purity: number; factor: number } | undefined {
   const s = subcategory ?? ""
-  return SILVER_COIN_SPECIAL[s] ?? (ninetyPctFaceValue(s) != null ? SILVER_COIN_SPECIAL["US coins 90%"] : undefined)
+  if (SILVER_COIN_SPECIAL[s]) return SILVER_COIN_SPECIAL[s]
+  if (ninetyPctFaceValue(s) != null) return SILVER_COIN_SPECIAL["US coins 90%"]
+  if (isFortyPctHalf(s)) return SILVER_COIN_SPECIAL["US coins 40%"]
+  return undefined
 }
 
 // Platinum scrap / jewelry: 88% purity × 90% of spot. Coins: full purity × 98% of spot.

@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
-import { ninetyPctFaceValue, ninetyPctNetOzt } from "@/lib/coins"
+import { coinNetOzt, coinOztPerCoin } from "@/lib/coins"
 import { arrowNav } from "@/lib/table-nav"
 import { todayInputValue, purchaseDateKey } from "@/lib/purchase-date"
 import { Select } from "@/components/select"
@@ -561,16 +561,16 @@ function NewPurchaseForm() {
         return { ...item, category: value, subcategory: "", weight: "", pricePerUnit: "", pricePaid: "" }
       }
       if (field === "subcategory") {
-        // 90% coins: weight = net t oz from the count already entered
-        const oz = ninetyPctNetOzt(value, parseInt(item.quantity) || 0)
+        // Coins bought by count (90%, 40% halves): weight = net t oz from the count
+        const oz = coinNetOzt(value, parseInt(item.quantity) || 0)
         if (oz != null) return recalcFromWeight({ ...item, subcategory: value }, String(oz))
         return { ...item, subcategory: value }
       }
       if (field === "quantity") {
-        // 90% coins: 0.715 t oz per $1 face — the count sets the weight
-        const oz = ninetyPctNetOzt(item.subcategory, parseInt(value) || 0)
+        // Coins bought by count: 90% = 0.715 t oz per $1 face, 40% halves = 0.14 t oz each
+        const oz = coinNetOzt(item.subcategory, parseInt(value) || 0)
         if (oz != null) return recalcFromWeight({ ...item, quantity: value }, String(oz))
-        if (ninetyPctFaceValue(item.subcategory) != null && !value) return { ...item, quantity: value, weight: "" }
+        if (coinOztPerCoin(item.subcategory) != null && !value) return { ...item, quantity: value, weight: "" }
       }
       const updated = { ...item, [field]: value }
       const weight = parseFloat(field === "weight" ? value : item.weight) || 0

@@ -20,7 +20,7 @@ interface Ticket {
   createdAt: string
   status: "OPEN" | "COMPLETED"
   lines: TicketLine[]
-  categoryTotals: { category: string; amount: number }[]
+  categoryTotals: { category: string; amount: number | null }[]
   total: number
   paymentMethod: string | null
   notes: string | null
@@ -78,6 +78,7 @@ export default function QuickTicketViewPage() {
         buyerName={ticket.user?.name ?? null}
         lines={ticket.lines.map((l, i) => ({ key: String(i), ...l }))}
         categoryTotals={ticket.categoryTotals}
+        total={ticket.total}
         payments={payments}
       />
 
@@ -128,7 +129,7 @@ export default function QuickTicketViewPage() {
             {ticket.categoryTotals.map(t => (
               <div key={t.category} className="mb-3">
                 <div className="flex justify-between font-semibold text-gray-900 border-b border-gray-200 pb-1">
-                  <span>{t.category}</span><span>{money(t.amount)}</span>
+                  <span>{t.category}</span><span>{t.amount != null ? money(t.amount) : ""}</span>
                 </div>
                 {ticket.lines.filter(l => l.category === t.category).map((l, i) => (
                   <div key={i} className="flex justify-between text-sm text-gray-600 py-0.5">

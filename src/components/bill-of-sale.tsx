@@ -30,7 +30,8 @@ export interface BillOfSaleProps {
   }
   buyerName?: string | null // employee who made the purchase
   lines: BillOfSaleLine[]
-  categoryTotals: { category: string; amount: number }[]
+  categoryTotals: { category: string; amount: number | null }[] // null = no per-category amount
+  total?: number // grand total; defaults to the sum of the category amounts
   payments: { method: string; amount: number }[]
 }
 
@@ -64,10 +65,10 @@ export function BillOfSale(p: BillOfSaleProps) {
       const u = l.weightUnit || "GRAM"
       weights[u] = (weights[u] || 0) + l.weight
     }
-    const amount = p.categoryTotals.find(t => t.category === name)?.amount ?? 0
+    const amount = p.categoryTotals.find(t => t.category === name)?.amount ?? null
     return { name, lines, weights, amount }
   })
-  const total = p.categoryTotals.reduce((s, t) => s + t.amount, 0)
+  const total = p.total ?? p.categoryTotals.reduce((s, t) => s + (t.amount ?? 0), 0)
   const paidTotal = p.payments.reduce((s, x) => s + (x.amount || 0), 0)
   const time = formatTime(p.recordedAt)
 
@@ -134,11 +135,11 @@ export function BillOfSale(p: BillOfSaleProps) {
                 </tr>
               ))}
               <tr className="border-b border-gray-400">
-                <td colSpan={3} className="py-1 pr-2 text-right font-semibold text-gray-600">{g.name} total</td>
+                <td colSpan={3} className="py-1 pr-2 text-right font-semibold text-gray-600">{g.amount != null || Object.keys(g.weights).length ? `${g.name} total` : ""}</td>
                 <td className="py-1 pr-2 text-right font-semibold whitespace-nowrap">
                   {Object.entries(g.weights).map(([u, w]) => fmtWeight(w, u)).join(" + ")}
                 </td>
-                <td className="py-1 text-right font-semibold whitespace-nowrap">{money(g.amount)}</td>
+                <td className="py-1 text-right font-semibold whitespace-nowrap">{g.amount != null ? money(g.amount) : ""}</td>
               </tr>
             </tbody>
           ))}

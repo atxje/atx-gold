@@ -59,6 +59,7 @@ export default function QuickTicketPage() {
   const [date, setDate] = useState(todayInputValue())
   const [lines, setLines] = useState<Line[]>([blankLine()])
   const [catAmounts, setCatAmounts] = useState<Record<string, string>>({})
+  const [grandTotal, setGrandTotal] = useState("") // used when no category amounts are entered
   const [payments, setPayments] = useState<{ method: string; amount: string; auto: boolean }[]>([])
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
@@ -146,7 +147,12 @@ export default function QuickTicketPage() {
     return ids
   }, [lines])
   const amountOf = (id: string) => parseFloat(catAmounts[id] || "") || 0
-  const total = Math.round(usedCats.reduce((s, id) => s + amountOf(id), 0) * 100) / 100
+  // Either every category gets an amount (total = their sum), or none do and
+  // only the grand total is typed in
+  const byCategory = usedCats.some(id => (catAmounts[id] || "").trim() !== "")
+  const total = byCategory
+    ? Math.round(usedCats.reduce((s, id) => s + amountOf(id), 0) * 100) / 100
+    : Math.round((parseFloat(grandTotal) || 0) * 100) / 100
 
   // Payment: a single method follows the total automatically
   useEffect(() => {
@@ -167,8 +173,12 @@ export default function QuickTicketPage() {
     if (!isNew && !leadId) return setError("Pick the seller")
     const filled = lines.filter(l => l.categoryId)
     if (filled.length === 0) return setError("Add at least one item")
-    const missingAmt = usedCats.filter(id => !(amountOf(id) > 0)).map(id => catById[id]?.name)
-    if (missingAmt.length) return setError(`Enter the amount for: ${missingAmt.join(", ")}`)
+    if (byCategory) {
+      const missingAmt = usedCats.filter(id => !(amountOf(id) > 0)).map(id => catById[id]?.name)
+      if (missingAmt.length) return setError(`Enter the amount for: ${missingAmt.join(", ")} — or clear all category amounts and enter just the total`)
+    } else if (!(total > 0)) {
+      return setError("Enter the total paid (or an amount for each category)")
+    }
     if (payments.length && Math.abs(paidTotal - total) > 0.005 &&
         !confirm(`Payments add up to $${paidTotal.toFixed(2)} but the total is $${total.toFixed(2)}. Save anyway?`)) return
 
@@ -191,7 +201,8 @@ export default function QuickTicketPage() {
               description: l.description || null,
             }
           }),
-          categoryTotals: usedCats.map(id => ({ category: catById[id]?.name || "", amount: amountOf(id) })),
+          categoryTotals: usedCats.map(id => ({ category: catById[id]?.name || "", amount: byCategory ? amountOf(id) : null })),
+          total,
           paymentMethod: payments.filter(p => p.amount).map(p => ({ method: p.method, amount: parseFloat(p.amount) })),
         }),
       })
@@ -329,7 +340,8 @@ export default function QuickTicketPage() {
         {/* Amounts + payment */}
         <section className="bg-white rounded-lg shadow p-5 grid md:grid-cols-2 gap-6">
           <div>
-            <h2 className="font-semibold text-gray-900 mb-3">Amount per category</h2>
+            <h2 className="font-semibold text-gray-900 mb-1">Amount per category <span className="text-xs font-normal text-gray-400">(optional)</span></h2>
+            <p className="text-xs text-gray-500 mb-3">Fill in every category, or leave them all blank and enter just the total.</p>
             {usedCats.length === 0 ? <p className="text-sm text-gray-400">Add items above.</p> : (
               <div className="space-y-2">
                 {usedCats.map(id => (
@@ -343,7 +355,16 @@ export default function QuickTicketPage() {
                 ))}
                 <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
                   <span className="flex-1 font-bold text-gray-900">Total paid</span>
-                  <span className="text-xl font-bold text-amber-600">${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                  {byCategory ? (
+                    <span className="text-xl font-bold text-amber-600">${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                  ) : (
+                    <>
+                      <span className="text-gray-400 text-sm">$</span>
+                      <input type="number" min="0" step="0.01" placeholder="0.00" value={grandTotal}
+                        onChange={e => setGrandTotal(e.target.value)}
+                        className="w-32 px-2 py-1.5 border-2 border-amber-400 rounded text-base font-bold text-right text-amber-700 focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                    </>
+                  )}
                 </div>
               </div>
             )}

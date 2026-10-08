@@ -60,19 +60,26 @@ export async function POST(request: Request) {
       }))
     if (lines.length === 0) return NextResponse.json({ error: "Add at least one item" }, { status: 400 })
 
-    // One amount per category that appears on the ticket
+    // Amounts: either one per category (total = their sum) or none, with just
+    // a grand total. Categories without an amount are stored as null.
     const cats = [...new Set(lines.map(l => l.category))]
     const given: Record<string, number> = {}
     for (const t of Array.isArray(body.categoryTotals) ? body.categoryTotals : []) {
       const a = num(t?.amount)
-      if (typeof t?.category === "string" && a != null) given[t.category] = a
+      if (typeof t?.category === "string" && a != null && a > 0) given[t.category] = a
     }
-    const categoryTotals = cats.map(c => ({ category: c, amount: given[c] ?? 0 }))
-    if (categoryTotals.some(t => t.amount < 0)) {
+    if (Object.values(given).some(a => a < 0)) {
       return NextResponse.json({ error: "Amounts can't be negative" }, { status: 400 })
     }
-    const total = Math.round(categoryTotals.reduce((s, t) => s + t.amount, 0) * 100) / 100
-    if (!(total > 0)) return NextResponse.json({ error: "Enter the amount paid for each category" }, { status: 400 })
+    const anyGiven = cats.some(c => given[c] != null)
+    if (anyGiven && cats.some(c => given[c] == null)) {
+      return NextResponse.json({ error: "Enter an amount for every category, or none and just the total" }, { status: 400 })
+    }
+    const categoryTotals = cats.map(c => ({ category: c, amount: anyGiven ? given[c] : null }))
+    const total = anyGiven
+      ? Math.round(cats.reduce((s, c) => s + given[c], 0) * 100) / 100
+      : Math.round((num(body.total) ?? 0) * 100) / 100
+    if (!(total > 0)) return NextResponse.json({ error: "Enter the total paid" }, { status: 400 })
 
     const userId = session.user.id
     const ticket = await prisma.$transaction(async (tx) => {

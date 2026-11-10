@@ -35,7 +35,7 @@ const STATUS_LABEL: Record<Recent["status"], string> = {
   SCHEDULED: "Scheduled", SENT: "Sent", CANCELED: "Canceled", FAILED: "Failed",
 }
 
-const field = "block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-amber-400 focus:border-amber-400"
+const field = "block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-amber-400 focus:border-amber-400"
 
 export default function MessagingSettingsPage() {
   const { data: session, status } = useSession()

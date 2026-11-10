@@ -57,6 +57,7 @@ const settingsGroup: NavGroup = {
   name: "Settings",
   items: [
     { name: "Buying Guidelines", href: "/settings/guidelines" },
+    { name: "Review Requests", href: "/settings/messaging" },
   ],
 }
 

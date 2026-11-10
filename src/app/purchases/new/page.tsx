@@ -228,6 +228,9 @@ function NewPurchaseForm() {
   const [purchaseDate, setPurchaseDate] = useState(todayInputValue())
   const [ticketTotal, setTicketTotal] = useState("")
   const [fromTicket, setFromTicket] = useState<{ id: string; purchaseNumber: string; total: number } | null>(null)
+  // Thank-you / Google review text (shown only when the feature is on)
+  const [reviewOn, setReviewOn] = useState(false)
+  const [sendReview, setSendReview] = useState(true)
   const [notes, setNotes] = useState("")
   const [editPurchaseNumber, setEditPurchaseNumber] = useState("")
   const [originalDbIds, setOriginalDbIds] = useState<string[]>([])
@@ -314,6 +317,7 @@ function NewPurchaseForm() {
   useEffect(() => {
     if (session) {
       fetch("/api/leads").then(r => r.ok ? r.json() : []).then(setLeads)
+      fetch("/api/settings/messaging").then(r => r.ok ? r.json() : null).then(d => setReviewOn(!!d?.reviewEnabled))
       fetch("/api/brands").then(r => r.ok ? r.json() : []).then((bs: { name: string; type: string }[]) => {
         setJewelryBrands(bs.filter(b => b.type === "JEWELRY").map(b => b.name))
         setWatchBrands(bs.filter(b => b.type === "WATCH").map(b => b.name))
@@ -1107,6 +1111,7 @@ function NewPurchaseForm() {
             : { leadId: selectedLeadId }),
           seller: { address: sellerAddress, idNumber: sellerIdNumber, phone: newLeadPhone, email: newLeadEmail, source: newLeadSource, channel: newLeadChannel },
           ...(fromTicket && { ticketId: fromTicket.id }),
+          ...(reviewOn && !fromTicket && { sendReviewRequest: sendReview }),
           purchaseDate,
           notes: notes || null,
           paymentMethod: paymentData,
@@ -1841,6 +1846,14 @@ function NewPurchaseForm() {
             <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
           </div>
+
+          {reviewOn && !editId && !fromTicket && (
+            <label className="flex items-center justify-end gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={sendReview} onChange={e => setSendReview(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+              Text the seller a thank-you with our Google review link
+            </label>
+          )}
 
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => router.back()}

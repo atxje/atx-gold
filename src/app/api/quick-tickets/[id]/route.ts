@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { cancelReviewRequests } from "@/lib/review-requests"
 
 // GET /api/quick-tickets/[id] — ticket with seller details (for print / completing)
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -31,11 +32,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "Only an admin can delete a ticket" }, { status: 403 })
   const { id } = await params
-  const ticket = await prisma.quickTicket.findUnique({ where: { id }, select: { status: true } })
+  const ticket = await prisma.quickTicket.findUnique({ where: { id }, select: { status: true, purchaseNumber: true } })
   if (!ticket) return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
   if (ticket.status !== "OPEN") {
     return NextResponse.json({ error: "This ticket is already a completed purchase — delete the purchase instead" }, { status: 409 })
   }
   await prisma.quickTicket.delete({ where: { id } })
+  // The sale didn't happen — don't send its review-request text
+  await cancelReviewRequests({ purchaseNumber: ticket.purchaseNumber })
   return NextResponse.json({ deleted: true })
 }

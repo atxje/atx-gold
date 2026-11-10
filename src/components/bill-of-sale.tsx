@@ -1,6 +1,6 @@
 import { BUSINESS } from "@/lib/business"
 import { formatPurchaseDate } from "@/lib/purchase-date"
-import { BILL_OF_SALE_TITLE, SELLER_DISCLAIMER, FOOTER_DISCLAIMER } from "@/lib/bill-of-sale-text"
+import { BILL_OF_SALE_TITLE, SELLER_DISCLAIMER, FOOTER_DISCLAIMER, SMS_CONSENT } from "@/lib/bill-of-sale-text"
 
 // Print-only bill of sale (hidden on screen via `hidden print:block`).
 // Lists what was sold without per-item prices: each category shows its lines
@@ -182,7 +182,10 @@ export function BillOfSale(p: BillOfSaleProps) {
       </div>
 
       {/* Signatures */}
-      <div className="mt-8 grid grid-cols-2 gap-10 break-inside-avoid">
+      {p.seller.phone && (
+        <p className="mt-6 text-[9.5px] leading-snug text-gray-700 break-inside-avoid">{SMS_CONSENT}</p>
+      )}
+      <div className={`${p.seller.phone ? "mt-3" : "mt-8"} grid grid-cols-2 gap-10 break-inside-avoid`}>
         <div>
           <div className="border-b border-gray-900 h-9" />
           <div className="mt-1 flex justify-between text-[10px] text-gray-600">

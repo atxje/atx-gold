@@ -23,3 +23,9 @@ export const FOOTER_DISCLAIMER: string[] = [
     "In person or U.S. mail: 2601 N Lamar Blvd, Austin, TX 78705-4207. Tel. No. (800) 538-1579. " +
     "Fax No. (512) 936-7610. Email: consumercomplaint@occc.state.tx.us. Website: www.occc.state.tx.us",
 ]
+
+// Printed just above the seller's signature: consent to follow-up texts
+// (the thank-you / review request) at the phone number on the form.
+export const SMS_CONSENT =
+  "By signing, I agree that ATX Jewelry Exchange may send text messages about this transaction to the phone number above. " +
+  "Message and data rates may apply. Reply STOP to opt out."

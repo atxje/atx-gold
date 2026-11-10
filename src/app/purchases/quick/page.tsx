@@ -62,6 +62,9 @@ export default function QuickTicketPage() {
   const [grandTotal, setGrandTotal] = useState("") // used when no category amounts are entered
   const [payments, setPayments] = useState<{ method: string; amount: string; auto: boolean }[]>([])
   const [notes, setNotes] = useState("")
+  // Thank-you / Google review text (shown only when the feature is on)
+  const [reviewOn, setReviewOn] = useState(false)
+  const [sendReview, setSendReview] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
@@ -71,6 +74,7 @@ export default function QuickTicketPage() {
     if (!session) return
     fetch("/api/categories").then(r => r.ok ? r.json() : []).then(setCategories)
     fetch("/api/leads").then(r => r.ok ? r.json() : []).then(setLeads)
+    fetch("/api/settings/messaging").then(r => r.ok ? r.json() : null).then(d => setReviewOn(!!d?.reviewEnabled))
   }, [session])
 
   // Existing seller picked → fill in what's on file
@@ -192,6 +196,7 @@ export default function QuickTicketPage() {
           seller: { address, idNumber, phone, email, source, channel },
           purchaseDate: date,
           notes,
+          ...(reviewOn && { sendReviewRequest: sendReview }),
           lines: filled.map(l => {
             const c = catById[l.categoryId]
             return {
@@ -396,6 +401,14 @@ export default function QuickTicketPage() {
             <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className={field} />
           </div>
         </section>
+
+        {reviewOn && (
+          <label className="flex items-center justify-end gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={sendReview} onChange={e => setSendReview(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+            Text the seller a thank-you with our Google review link
+          </label>
+        )}
 
         <div className="flex justify-end gap-3 pb-8">
           <button type="button" onClick={() => router.back()}

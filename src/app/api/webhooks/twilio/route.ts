@@ -3,6 +3,7 @@ import twilio from "twilio"
 import { prisma } from "@/lib/prisma"
 import { sendSms, formatPhoneNumber } from "@/lib/twilio"
 import { generateAIResponse } from "@/lib/ai-agent"
+import { cancelReviewRequests } from "@/lib/review-requests"
 
 export async function POST(request: Request) {
   try {
@@ -66,6 +67,55 @@ export async function POST(request: Request) {
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         { headers: { "Content-Type": "text/xml" } }
       )
+    }
+
+    const empty = () =>
+      new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
+        headers: { "Content-Type": "text/xml" },
+      })
+
+    // Opt-out / opt-in keywords. Twilio sends the confirmation reply itself;
+    // we record the choice so the app never tries to text this person again.
+    const keyword = body.trim().toUpperCase().replace(/[^A-Z]/g, "")
+    if (["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"].includes(keyword)) {
+      await prisma.lead.update({ where: { id: lead.id }, data: { smsOptOut: true } })
+      await cancelReviewRequests({ leadId: lead.id })
+      await prisma.smsConversation.updateMany({
+        where: { leadId: lead.id, status: "ACTIVE" },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      })
+      return empty()
+    }
+    if (["START", "UNSTOP"].includes(keyword)) {
+      await prisma.lead.update({ where: { id: lead.id }, data: { smsOptOut: false } })
+      return empty()
+    }
+    if (keyword === "HELP" || keyword === "INFO") return empty()
+
+    // A reply to the thank-you / review text (or from someone who opted out)
+    // is logged for staff to read — the appointment-scheduling AI stays out of it.
+    const activeExists = await prisma.smsConversation.count({ where: { leadId: lead.id, status: "ACTIVE" } })
+    if (activeExists === 0) {
+      const recentReview = await prisma.reviewRequest.findFirst({
+        where: {
+          leadId: lead.id,
+          status: { in: ["SCHEDULED", "SENT"] },
+          sendAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
+        },
+        select: { id: true },
+      })
+      if (recentReview || lead.smsOptOut) {
+        const thread =
+          (await prisma.smsConversation.findFirst({
+            where: { leadId: lead.id, status: "PAUSED" },
+            orderBy: { startedAt: "desc" },
+            select: { id: true },
+          })) ?? (await prisma.smsConversation.create({ data: { leadId: lead.id, status: "PAUSED" }, select: { id: true } }))
+        await prisma.smsMessage.create({
+          data: { conversationId: thread.id, direction: "INBOUND", content: body, twilioSid: messageSid },
+        })
+        return empty()
+      }
     }
 
     // Find active conversation

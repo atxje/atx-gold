@@ -7,6 +7,7 @@ import { parsePurchaseDate } from "@/lib/purchase-date"
 import { applyOverpayFlag, stripOverpay } from "@/lib/overpay"
 import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
 import { parseSellerFields } from "@/lib/seller-fields"
+import { scheduleReviewRequest, requestOrigin } from "@/lib/review-requests"
 import { createPurchaseLine, PurchaseInputError, type PurchaseLineInput } from "@/lib/purchases"
 
 export async function GET(request: Request) {
@@ -155,6 +156,17 @@ export async function POST(request: Request) {
       await applyOverpayFlag(c.id)
     }
 
+    // Thank-you text with the Google review link — only for a brand-new sale
+    // (completing a quick ticket already queued one when the ticket was signed)
+    const review = ticketId || providedNumber || body.sendReviewRequest === false
+      ? { status: "skipped" as const, reason: ticketId ? "Queued when the ticket was signed" : "Turned off for this purchase" }
+      : await scheduleReviewRequest({
+          leadId: result.leadId,
+          purchaseNumber: result.purchaseNumber,
+          purchaseDate: purchaseDate ? parsePurchaseDate(purchaseDate) : null,
+          origin: requestOrigin(request),
+        })
+
     const first = await prisma.purchase.findUnique({
       where: { id: result.created[0].id },
       include: { lead: { select: { id: true, name: true, phone: true, email: true } } },
@@ -166,6 +178,7 @@ export async function POST(request: Request) {
       purchaseNumber: result.purchaseNumber,
       leadId: result.leadId,
       items: result.created,
+      review,
     })
   } catch (error) {
     if (error instanceof PurchaseInputError) {

@@ -32,6 +32,36 @@ export async function sendSms(to: string, body: string) {
   return message
 }
 
+// Schedule a text for later through the Messaging Service (Twilio holds it and
+// sends it at sendAt — no cron needed). sendAt must be 15 minutes to 35 days ahead.
+export async function scheduleSms(to: string, body: string, sendAt: Date, statusCallback?: string) {
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+  if (!messagingServiceSid) {
+    throw new Error("Twilio messaging service not configured (TWILIO_MESSAGING_SERVICE_SID)")
+  }
+  return getClient().messages.create({
+    body,
+    to,
+    messagingServiceSid,
+    scheduleType: "fixed",
+    sendAt,
+    ...(statusCallback && { statusCallback }),
+  })
+}
+
+// Cancel a text that was scheduled but hasn't gone out yet
+export async function cancelScheduledSms(sid: string) {
+  return getClient().messages(sid).update({ status: "canceled" })
+}
+
+export function smsConfigStatus() {
+  return {
+    credentials: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+    phoneNumber: !!process.env.TWILIO_PHONE_NUMBER,
+    messagingService: !!process.env.TWILIO_MESSAGING_SERVICE_SID,
+  }
+}
+
 export function formatPhoneNumber(phone: string): string {
   // Remove all non-digit characters
   const digits = phone.replace(/\D/g, "")

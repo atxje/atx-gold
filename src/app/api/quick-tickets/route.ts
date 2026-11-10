@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
 import { parsePurchaseDate } from "@/lib/purchase-date"
 import { resolveSeller, SellerError } from "@/lib/seller-fields"
+import { scheduleReviewRequest, requestOrigin } from "@/lib/review-requests"
 
 // Quick tickets: the short bill of sale signed at the desk; completed later
 // into a full purchase under the same PUR number.
@@ -100,7 +101,18 @@ export async function POST(request: Request) {
       })
     }, TX_OPTIONS)
 
-    return NextResponse.json(ticket)
+    // Thank-you text with the Google review link, sent later by Twilio.
+    // Runs after the save is committed and can never fail the ticket.
+    const review = body.sendReviewRequest === false
+      ? { status: "skipped" as const, reason: "Turned off for this ticket" }
+      : await scheduleReviewRequest({
+          leadId: ticket.leadId,
+          purchaseNumber: ticket.purchaseNumber,
+          purchaseDate: body.purchaseDate ? parsePurchaseDate(body.purchaseDate) : null,
+          origin: requestOrigin(request),
+        })
+
+    return NextResponse.json({ ...ticket, review })
   } catch (error) {
     if (error instanceof SellerError) return NextResponse.json({ error: error.message }, { status: 400 })
     console.error("Error creating quick ticket:", error)

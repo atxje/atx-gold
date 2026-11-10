@@ -122,6 +122,8 @@ model Lead {
   purchases        Purchase[]
   quickTickets     QuickTicket[]
   smsConversations SmsConversation[]
+  reviewRequests   ReviewRequest[]
+  smsOptOut        Boolean           @default(false) // replied STOP — never text again
 
   @@index([status])
   @@index([followUpDate])
@@ -447,6 +449,47 @@ model BuyingGuidelines {
   maxUnderSpotSilverJunk    Float    @default(15)   // junk/90% silver (Peace/Morgan, US 90%/40%): flag if paid > (spot − this) per fine ozt
   updatedAt                 DateTime @updatedAt
   updatedBy                 String?
+}
+
+// Singleton row: automatic text messages (admin-only settings)
+model MessagingSettings {
+  id                 String   @id @default(cuid())
+  reviewEnabled      Boolean  @default(false) // off until carrier registration is approved
+  reviewLink         String   @default("https://g.page/r/CV2x77rr29k4EBE/review")
+  reviewMessage      String   @default("Thank you for visiting ATX Jewelry Exchange today, {first_name}! If you have a minute, we'd really appreciate a Google review: {link} Reply STOP to opt out.") @db.Text
+  reviewDelayMinutes Int      @default(60)    // wait after the sale before texting
+  reviewCooldownDays Int      @default(90)    // don't ask the same seller again within this many days
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?
+}
+
+enum ReviewRequestStatus {
+  SCHEDULED // handed to Twilio, waiting for its send time
+  SENT
+  CANCELED  // sale deleted or seller opted out before it went out
+  FAILED    // couldn't be scheduled or delivered (see error)
+}
+
+// One thank-you / Google review text per completed sale
+model ReviewRequest {
+  id             String              @id @default(cuid())
+  leadId         String
+  purchaseNumber String?
+  phone          String
+  message        String              @db.Text
+  sendAt         DateTime
+  status         ReviewRequestStatus @default(SCHEDULED)
+  twilioSid      String?             @unique
+  error          String?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([purchaseNumber])
+  @@index([status])
 }
 
 enum ConversationStatus {

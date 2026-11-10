@@ -7,6 +7,7 @@ import { parsePurchaseDate } from "@/lib/purchase-date"
 import { applyOverpayFlag, loadGuidelines, stripOverpay } from "@/lib/overpay"
 import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
 import { parseSellerFields } from "@/lib/seller-fields"
+import { cancelReviewRequests } from "@/lib/review-requests"
 import {
   createPurchaseLine,
   pickDiamond,
@@ -342,6 +343,16 @@ export async function DELETE(
         if (remaining === 0) await tx.inventoryItem.delete({ where: { id: itemId } })
       }
     })
+
+    // Whole sale removed (and it didn't come from a signed ticket, which is
+    // reopened instead): don't send its review-request text
+    if (target.purchaseNumber) {
+      const [left, ticket] = await Promise.all([
+        prisma.purchase.count({ where: { purchaseNumber: target.purchaseNumber } }),
+        prisma.quickTicket.count({ where: { purchaseNumber: target.purchaseNumber } }),
+      ])
+      if (left === 0 && ticket === 0) await cancelReviewRequests({ purchaseNumber: target.purchaseNumber })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting purchase:", error)

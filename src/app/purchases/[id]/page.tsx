@@ -203,6 +203,30 @@ export default function PurchaseDetailPage() {
     }
   }
 
+  // Completed by mistake: remove the detailed purchase (reversing its stock)
+  // and put the signed quick ticket back on the To Finish list
+  async function revertToTicket() {
+    if (!purchase?.ticketId) return
+    const label = purchase.purchaseNumber || "this purchase"
+    if (!confirm(
+      `Go back to the quick ticket for ${label}?\n\n` +
+      "The prices and details entered when completing it will be removed, and the stock it added will be reversed. " +
+      "The ticket the customer signed is kept and returns to the To Finish list."
+    )) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/purchases/${id}?scope=document`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || "Couldn't go back to the quick ticket")
+        return
+      }
+      router.push(`/purchases/quick/${purchase.ticketId}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (status === "loading" || !session || loading)
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   if (!purchase)
@@ -250,6 +274,13 @@ export default function PurchaseDetailPage() {
                     </button>
                   </>
                 ) : null}
+                {purchase.ticketId && (
+                  <button onClick={revertToTicket} disabled={deleting}
+                    title="Completed by mistake? Undo it and return this to the To Finish list"
+                    className="px-4 py-2 border border-amber-300 rounded-md text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+                    {deleting ? "Working…" : "↩ Back to Quick Ticket"}
+                  </button>
+                )}
                 {purchase.ticketId && (
                   <Link href={`/purchases/quick/${purchase.ticketId}`}
                     title="The short ticket the customer signed"

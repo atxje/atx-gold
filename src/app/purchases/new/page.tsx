@@ -1144,6 +1144,13 @@ function NewPurchaseForm() {
               Completing quick ticket <b>{fromTicket.purchaseNumber}</b>. The customer signed for{" "}
               <b>${fromTicket.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</b> — add the prices and details below.
               It's saved under the same number; you'll get a warning if the items don't add up to the signed total.
+              <div className="mt-2">
+                <button type="button" onClick={() => router.push(`/purchases/quick/${fromTicket.id}`)}
+                  className="px-3 py-1.5 border border-amber-400 rounded-md text-sm font-medium text-amber-800 bg-white hover:bg-amber-100">
+                  ↩ Back to Quick Ticket — not ready to complete
+                </button>
+                <span className="ml-2 text-xs text-amber-800">Nothing is saved until you press Record.</span>
+              </div>
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 
 interface Recent {
   id: string
@@ -105,6 +106,7 @@ export default function MessagingSettingsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <div className="max-w-3xl mx-auto px-4 py-8">
+        <PageNav links={[{ label: "Buying Guidelines", href: "/settings/guidelines" }, { label: "Messages", href: "/conversations" }]} />
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Review Requests</h1>
         <p className="text-sm text-gray-500 mb-6">
           After a sale is saved (Quick Ticket or Record Purchase), the seller gets a thank-you text with your

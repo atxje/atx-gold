@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef, use } from "react"
 import Link from "next/link"
+import { PageNav } from "@/components/page-nav"
+import { Navbar } from "@/components/navbar"
 import { format } from "date-fns"
 import { Select } from "@/components/select"
 
@@ -133,7 +135,14 @@ export default function ConversationDetailPage({
   }
 
   return (
+    <div className="min-h-screen bg-gray-50">
+    <Navbar />
     <div className="max-w-3xl mx-auto p-6">
+      <PageNav back links={[
+        { label: "Messages", href: "/conversations" },
+        { label: "Leads", href: "/leads" },
+        { label: "Appointments", href: "/appointments" },
+      ]} />
       {/* Header */}
       <div className="bg-white shadow rounded-lg p-4 mb-4">
         <div className="flex justify-between items-start">
@@ -259,6 +268,7 @@ export default function ConversationDetailPage({
           </div>
         )}
       </div>
+    </div>
     </div>
   )
 }

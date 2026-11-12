@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { Select } from "@/components/select"
 
 interface Subcategory {
@@ -169,6 +170,7 @@ export default function CategoriesPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Inventory", href: "/inventory" }, { label: "Brands & Stones", href: "/brands" }]} />
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Stock Categories</h1>
           <button onClick={() => { setShowAdd(true); setAddName(""); setAddSubs([]) }}

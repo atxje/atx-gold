@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { BillOfSale } from "@/components/bill-of-sale"
 import { PrintOnArrival } from "@/components/print-on-arrival"
 import { formatPurchaseDate } from "@/lib/purchase-date"
@@ -85,8 +86,12 @@ export default function QuickTicketViewPage() {
       <div className="print:hidden min-h-screen bg-gray-50">
         <Navbar />
         <main className="max-w-3xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/purchases" className="text-sm text-gray-500 hover:text-gray-700">&larr; Purchases</Link>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <PageNav className="" links={[
+              { label: "Purchases", href: "/purchases" },
+              { label: "Seller", href: `/leads/${ticket.lead.id}` },
+              { label: "+ New Quick Ticket", href: "/purchases/quick", primary: true },
+            ]} />
             <div className="flex gap-2">
               {ticket.status === "OPEN" && isAdmin && (
                 <button onClick={remove} disabled={deleting}

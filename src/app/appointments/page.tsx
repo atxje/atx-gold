@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { TextModal } from "@/components/text-modal"
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns"
 
@@ -113,6 +114,7 @@ export default function AppointmentsPage() {
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Leads", href: "/leads" }, { label: "Messages", href: "/conversations" }]} />
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
           <Link

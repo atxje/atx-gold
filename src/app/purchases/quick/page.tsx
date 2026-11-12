@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { Select } from "@/components/select"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 import { todayInputValue } from "@/lib/purchase-date"
@@ -76,6 +76,12 @@ export default function QuickTicketPage() {
     fetch("/api/leads").then(r => r.ok ? r.json() : []).then(setLeads)
     fetch("/api/settings/messaging").then(r => r.ok ? r.json() : null).then(d => setReviewOn(!!d?.reviewEnabled))
   }, [session])
+
+  // Opened from a lead's page (?leadId=…): start with that seller selected
+  useEffect(() => {
+    const preselected = new URLSearchParams(window.location.search).get("leadId")
+    if (preselected) { setIsNew(false); setLeadId(preselected) }
+  }, [])
 
   // Existing seller picked → fill in what's on file
   useEffect(() => {
@@ -228,7 +234,7 @@ export default function QuickTicketPage() {
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-end justify-between">
           <div>
-            <Link href="/purchases" className="text-sm text-gray-500 hover:text-gray-700">&larr; Purchases</Link>
+            <PageNav back className="mb-2" links={[{ label: "Purchases", href: "/purchases" }, { label: "Stock Documents", href: "/documents" }]} />
             <h1 className="text-2xl font-bold text-gray-900 mt-1">Quick Ticket</h1>
             <p className="text-sm text-gray-500">For the customer to sign now — complete the full purchase later from <b>To Finish</b>.</p>
           </div>

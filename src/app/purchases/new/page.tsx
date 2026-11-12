@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
 import { coinNetOzt, coinOztPerCoin } from "@/lib/coins"
 import { arrowNav } from "@/lib/table-nav"
@@ -1137,7 +1138,7 @@ function NewPurchaseForm() {
       <Navbar />
       <main className={`mx-auto px-4 py-8 ${showDiamonds ? "max-w-[1400px]" : "max-w-6xl"}`}>
         <div className="mb-6">
-          <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
+          <PageNav back links={[{ label: "Purchases", href: "/purchases" }, { label: "Stock Documents", href: "/documents" }]} className="mb-2" />
           <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Purchase${editPurchaseNumber ? ` — ${editPurchaseNumber}` : ""}` : fromTicket ? `Complete Purchase — ${fromTicket.purchaseNumber}` : "Record Purchase"}</h1>
           {fromTicket && (
             <div className="mt-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">

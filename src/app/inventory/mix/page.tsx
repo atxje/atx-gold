@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { InventoryPickerModal } from "@/components/inventory-picker"
 import { Select } from "@/components/select"
 
@@ -228,7 +229,7 @@ function MixContent() {
       <Navbar />
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
+          <PageNav back links={[{ label: "Inventory", href: "/inventory" }, { label: "Stock Documents", href: "/documents" }]} className="mb-2" />
           <h1 className="text-2xl font-bold text-gray-900 mt-1">Mix / Transfer</h1>
           <p className="text-sm text-gray-500 mt-1">Move weight and cost from one or more items into another item.</p>
         </div>

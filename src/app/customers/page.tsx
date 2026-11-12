@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 
 interface Customer {
   id: string
@@ -103,6 +104,7 @@ export default function CustomersPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Leads", href: "/leads" }, { label: "Stock Documents", href: "/documents" }]} />
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
           <button onClick={startAdd} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">

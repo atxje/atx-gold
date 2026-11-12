@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { PageNav } from "@/components/page-nav"
+import { Navbar } from "@/components/navbar"
 import { formatDistanceToNow } from "date-fns"
 
 interface Conversation {
@@ -63,7 +65,10 @@ export default function ConversationsPage() {
   }
 
   return (
+    <div className="min-h-screen bg-gray-50">
+    <Navbar />
     <div className="max-w-4xl mx-auto p-6">
+      <PageNav links={[{ label: "Leads", href: "/leads" }, { label: "Appointments", href: "/appointments" }]} />
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
         <div className="flex gap-2">
@@ -149,6 +154,7 @@ export default function ConversationsPage() {
           ))}
         </div>
       )}
+    </div>
     </div>
   )
 }

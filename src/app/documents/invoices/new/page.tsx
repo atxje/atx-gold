@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { arrowNav } from "@/lib/table-nav"
 import { InventoryPickerModal } from "@/components/inventory-picker"
 import { Select } from "@/components/select"
@@ -568,7 +569,7 @@ function NewInvoiceContent() {
       <Navbar />
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back</button>
+          <PageNav back links={[{ label: "Stock Documents", href: "/documents" }, { label: "Inventory", href: "/inventory" }]} className="mb-2" />
           <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit ${isTransfer ? "Transfer" : "Invoice"}${invoiceNumber ? ` — ${invoiceNumber}` : ""}` : isTransfer ? "New Transfer" : "New Invoice"}</h1>
         </div>
 

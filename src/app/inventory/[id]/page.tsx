@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { format } from "date-fns"
 import { formatPurchaseDate } from "@/lib/purchase-date"
 import { Select } from "@/components/select"
@@ -368,7 +368,7 @@ export default function InventoryItemPage() {
       <Navbar />
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <Link href="/inventory" className="text-gray-500 hover:text-gray-700 text-sm">&larr; Back to Inventory</Link>
+          <PageNav back links={[{ label: "Inventory", href: "/inventory" }, { label: "Purchases", href: "/purchases" }, { label: "Stock Documents", href: "/documents" }]} className="" />
         </div>
 
         {/* Header card */}

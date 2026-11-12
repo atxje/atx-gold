@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { LeadForm } from "@/components/lead-form"
 
 export default function NewLeadPage() {
@@ -26,12 +27,7 @@ export default function NewLeadPage() {
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
-          <button
-            onClick={() => router.back()}
-            className="text-gray-500 hover:text-gray-700 mb-2"
-          >
-            &larr; Back
-          </button>
+          <PageNav back links={[{ label: "Leads", href: "/leads" }, { label: "Appointments", href: "/appointments" }]} />
           <h1 className="text-2xl font-bold text-gray-900">Add New Lead</h1>
         </div>
 

@@ -4,6 +4,7 @@ import { useEffect, useState, use } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { LeadForm } from "@/components/lead-form"
 import { TextModal } from "@/components/text-modal"
 import { format } from "date-fns"
@@ -178,12 +179,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
-          <button
-            onClick={() => router.push("/leads")}
-            className="text-gray-500 hover:text-gray-700 mb-2"
-          >
-            &larr; Back to Leads
-          </button>
+          <PageNav back className="" links={[
+            { label: "Leads", href: "/leads" },
+            { label: "Appointments", href: "/appointments" },
+            { label: "Messages", href: "/conversations" },
+            { label: "+ Quick Ticket", href: `/purchases/quick?leadId=${id}`, primary: true },
+          ]} />
         </div>
 
         {editing ? (
@@ -358,12 +359,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">Purchases</h2>
-            <button
-              onClick={() => router.push(`/purchases/new?leadId=${id}`)}
-              className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-            >
-              Add Purchase
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push(`/purchases/quick?leadId=${id}`)}
+                className="px-3 py-1 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700"
+              >
+                Quick Ticket
+              </button>
+              <button
+                onClick={() => router.push(`/purchases/new?leadId=${id}`)}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+              >
+                Add Purchase
+              </button>
+            </div>
           </div>
           {lead.purchases.length === 0 ? (
             <p className="text-gray-500 text-sm">No purchases recorded</p>

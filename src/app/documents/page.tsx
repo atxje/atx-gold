@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { format } from "date-fns"
 import { formatPurchaseDate, purchaseDateKey } from "@/lib/purchase-date"
 
@@ -88,6 +89,7 @@ export default function DocumentsPage() {
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Purchases", href: "/purchases" }, { label: "Inventory", href: "/inventory" }]} />
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Stock Documents</h1>
           <div className="flex gap-3">

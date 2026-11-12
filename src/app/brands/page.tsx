@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 
 interface Brand {
   id: string
@@ -105,6 +106,7 @@ export default function BrandsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Inventory", href: "/inventory" }, { label: "Categories", href: "/categories" }]} />
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Brands &amp; Stones</h1>
         <p className="text-sm text-gray-500 mb-6">
           These appear in the Brand and Main Stone dropdowns on Insert Stock and New Purchase.

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { formatPurchaseDate, purchaseMonthKey } from "@/lib/purchase-date"
 
 type Tab = "cashflow" | "purchases" | "sales" | "transfers" | "valuation"
@@ -474,6 +475,7 @@ export default function ReportsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Compensation", href: "/compensation" }, { label: "Purchases", href: "/purchases" }, { label: "Inventory", href: "/inventory" }]} />
         <div className="flex flex-col gap-3 mb-6">
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-900">Reports</h1>

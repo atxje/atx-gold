@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 import { startOfWeek, startOfMonth, startOfYear } from "date-fns"
 import { formatPurchaseDate, purchaseDateAsLocalDay, purchaseDateKey } from "@/lib/purchase-date"
 import { Select } from "@/components/select"
@@ -177,6 +178,7 @@ const filteredPurchases = useMemo(() => {
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageNav links={[{ label: "Stock Documents", href: "/documents" }, { label: "Inventory", href: "/inventory" }]} />
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Purchases</h1>
           <div className="flex gap-2">

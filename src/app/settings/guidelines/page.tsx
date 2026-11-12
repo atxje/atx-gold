@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { PageNav } from "@/components/page-nav"
 
 interface Guidelines {
   maxPctMeltGoldPlat: number
@@ -121,6 +122,7 @@ export default function GuidelinesSettingsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <div className="max-w-2xl mx-auto px-4 py-8">
+        <PageNav links={[{ label: "Review Requests", href: "/settings/messaging" }, { label: "Purchases", href: "/purchases" }]} />
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Buying Guidelines</h1>
         <p className="text-sm text-gray-500 mb-6">
           Purchases exceeding these limits are flagged for review. Flags are visible to admins only

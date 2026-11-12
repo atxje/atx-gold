@@ -1,8 +1,12 @@
+"use client"
+
+import { useLayoutEffect, useRef } from "react"
 import { BUSINESS } from "@/lib/business"
 import { formatPurchaseDate } from "@/lib/purchase-date"
 import { BILL_OF_SALE_TITLE, SELLER_DISCLAIMER, FOOTER_DISCLAIMER, SMS_CONSENT } from "@/lib/bill-of-sale-text"
 
-// Print-only bill of sale (hidden on screen via `hidden print:block`).
+// Print-only bill of sale. It is kept off-screen (not display:none) so it can be
+// measured and scaled to fit a single printed page.
 // Lists what was sold without per-item prices: each category shows its lines
 // (type, description, qty, weight) and one amount; then the grand total.
 // Used for quick tickets and for full purchases.
@@ -34,6 +38,21 @@ export interface BillOfSaleProps {
   total?: number // grand total; defaults to the sum of the category amounts
   payments: { method: string; amount: number }[]
 }
+
+// Printable area of a Letter page with the 0.5in margins set by @page, with a
+// little height held back for printers that add their own margins.
+const PAGE_W_IN = 7.5
+const PAGE_H_IN = 9.7
+const MIN_ZOOM = 0.62
+
+// On screen the form sits off-screen (laid out at page width so it can be
+// measured); when printing it becomes the page content at the fitted zoom.
+const BOS_CSS = `
+.bos-root { position: fixed; left: -10000px; top: 0; width: var(--bos-w, ${PAGE_W_IN}in); visibility: hidden; pointer-events: none; }
+@media print {
+  .bos-root { position: static; visibility: visible; width: var(--bos-w, 100%); zoom: var(--bos-zoom, 1); }
+}
+`
 
 const UNIT: Record<string, string> = { GRAM: "g", TROY_OZ: "ozt", CARAT: "ct" }
 
@@ -72,13 +91,43 @@ export function BillOfSale(p: BillOfSaleProps) {
   const paidTotal = p.payments.reduce((s, x) => s + (x.amount || 0), 0)
   const time = formatTime(p.recordedAt)
 
-  const label = "text-[10px] font-semibold uppercase tracking-wide text-gray-500"
-  const field = "border-b border-gray-300 min-h-[1.4rem] pb-0.5 text-[12px] text-gray-900"
+  const label = "text-[9.5px] font-semibold uppercase tracking-wide text-gray-500"
+  const field = "border-b border-gray-300 min-h-[1.25rem] text-[12px] text-gray-900"
+
+  // Fit on ONE page: the form is laid out off-screen at the printable width,
+  // measured, and — only if it's taller than a page — shrunk just enough to
+  // fit (widening the layout by the same factor so it still fills the page).
+  // Very long tickets stop shrinking at MIN_ZOOM and continue on a second page.
+  const rootRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const H = PAGE_H_IN * 96
+    const heightAt = (z: number) => {
+      el.style.setProperty("--bos-w", `${PAGE_W_IN / z}in`)
+      return el.scrollHeight
+    }
+    let zoom = 1
+    if (heightAt(1) > H) {
+      // lo always fits (or is the floor); hi is too big. Narrow in on the largest zoom that fits.
+      let lo = Math.max(MIN_ZOOM, H / heightAt(1))
+      let hi = 1
+      for (let i = 0; i < 6; i++) {
+        const mid = (lo + hi) / 2
+        if (mid * heightAt(mid) <= H) lo = mid
+        else hi = mid
+      }
+      zoom = lo
+    }
+    el.style.setProperty("--bos-w", `${PAGE_W_IN / zoom}in`)
+    el.style.setProperty("--bos-zoom", String(zoom))
+  })
 
   return (
-    <div className="hidden print:block text-gray-900 text-[12px] leading-snug">
+    <div ref={rootRef} aria-hidden className="bos-root text-gray-900 text-[12px] leading-snug">
+      <style>{BOS_CSS}</style>
       {/* Header */}
-      <div className="flex items-start justify-between border-b-2 border-gray-900 pb-3">
+      <div className="flex items-start justify-between border-b-2 border-gray-900 pb-2">
         <div>
           <div className="text-lg font-bold">{BUSINESS.name}</div>
           <div>{BUSINESS.address}</div>
@@ -94,9 +143,9 @@ export function BillOfSale(p: BillOfSaleProps) {
       </div>
 
       {/* Seller */}
-      <div className="mt-4">
-        <div className="text-[11px] font-bold uppercase tracking-wide mb-2">Seller Information</div>
-        <div className="grid grid-cols-6 gap-x-4 gap-y-2">
+      <div className="mt-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Seller Information</div>
+        <div className="grid grid-cols-6 gap-x-4 gap-y-1">
           <div className="col-span-4"><div className={label}>Name</div><div className={field}>{p.seller.name}</div></div>
           <div className="col-span-2"><div className={label}>DL / ID #</div><div className={field}>{p.seller.idNumber || ""}</div></div>
           <div className="col-span-6"><div className={label}>Address</div><div className={field}>{p.seller.address || ""}</div></div>
@@ -106,8 +155,8 @@ export function BillOfSale(p: BillOfSaleProps) {
       </div>
 
       {/* Items by category — one amount per category, no per-item prices */}
-      <div className="mt-5">
-        <div className="text-[11px] font-bold uppercase tracking-wide mb-1">Items Purchased</div>
+      <div className="mt-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide">Items Purchased</div>
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-gray-900 text-left text-[10px] uppercase tracking-wide text-gray-600">
@@ -121,25 +170,25 @@ export function BillOfSale(p: BillOfSaleProps) {
           {groups.map(g => (
             <tbody key={g.name} className="break-inside-avoid">
               <tr>
-                <td colSpan={5} className="pt-2.5 pb-1 font-bold">{g.name}</td>
+                <td colSpan={5} className="pt-1.5 pb-0.5 font-bold">{g.name}</td>
               </tr>
               {g.lines.map(l => (
                 <tr key={l.key} className="border-b border-gray-200">
-                  <td className="py-1 pr-2 align-top">{l.type || "—"}</td>
-                  <td className="py-1 pr-2 align-top">{l.description || ""}</td>
-                  <td className="py-1 pr-2 align-top text-right">{l.quantity && l.quantity > 0 ? l.quantity : ""}</td>
-                  <td className="py-1 pr-2 align-top text-right whitespace-nowrap">
+                  <td className="py-0.5 pr-2 align-top">{l.type || "—"}</td>
+                  <td className="py-0.5 pr-2 align-top">{l.description || ""}</td>
+                  <td className="py-0.5 pr-2 align-top text-right">{l.quantity && l.quantity > 0 ? l.quantity : ""}</td>
+                  <td className="py-0.5 pr-2 align-top text-right whitespace-nowrap">
                     {l.weight != null && l.weight > 0 ? fmtWeight(l.weight, l.weightUnit || "GRAM") : ""}
                   </td>
-                  <td className="py-1 align-top" />
+                  <td className="py-0.5 align-top" />
                 </tr>
               ))}
               <tr className="border-b border-gray-400">
-                <td colSpan={3} className="py-1 pr-2 text-right font-semibold text-gray-600">{g.amount != null || Object.keys(g.weights).length ? `${g.name} total` : ""}</td>
-                <td className="py-1 pr-2 text-right font-semibold whitespace-nowrap">
+                <td colSpan={3} className="py-0.5 pr-2 text-right font-semibold text-gray-600">{g.amount != null || Object.keys(g.weights).length ? `${g.name} total` : ""}</td>
+                <td className="py-0.5 pr-2 text-right font-semibold whitespace-nowrap">
                   {Object.entries(g.weights).map(([u, w]) => fmtWeight(w, u)).join(" + ")}
                 </td>
-                <td className="py-1 text-right font-semibold whitespace-nowrap">{g.amount != null ? money(g.amount) : ""}</td>
+                <td className="py-0.5 text-right font-semibold whitespace-nowrap">{g.amount != null ? money(g.amount) : ""}</td>
               </tr>
             </tbody>
           ))}
@@ -148,23 +197,23 @@ export function BillOfSale(p: BillOfSaleProps) {
 
       {/* Disclaimer #1 */}
       {SELLER_DISCLAIMER.length > 0 && (
-        <div className="mt-4 border border-gray-400 p-2.5 text-[10.5px] leading-snug space-y-1.5 break-inside-avoid">
+        <div className="mt-3 border border-gray-400 px-2.5 py-1.5 text-[9.5px] leading-snug space-y-1 break-inside-avoid">
           {SELLER_DISCLAIMER.map((t, n) => <p key={n}>{t}</p>)}
         </div>
       )}
 
       {/* Totals and payment */}
-      <div className="mt-4 flex justify-end break-inside-avoid">
+      <div className="mt-2 flex justify-end break-inside-avoid">
         <table className="w-[55%] border-collapse">
           <tbody>
             <tr className="border-b-2 border-gray-900">
-              <td className="py-1.5 font-bold uppercase">Total Amount Paid</td>
-              <td className="py-1.5 text-right text-base font-bold">{money(total)}</td>
+              <td className="py-1 font-bold uppercase">Total Amount Paid</td>
+              <td className="py-1 text-right text-base font-bold">{money(total)}</td>
             </tr>
             {p.payments.length > 0 ? p.payments.map(x => (
               <tr key={x.method} className="border-b border-gray-200">
-                <td className="py-1 text-gray-600">Paid by {x.method}</td>
-                <td className="py-1 text-right">{money(x.amount)}</td>
+                <td className="py-0.5 text-gray-600">Paid by {x.method}</td>
+                <td className="py-0.5 text-right">{money(x.amount)}</td>
               </tr>
             )) : (
               <tr className="border-b border-gray-200">
@@ -183,24 +232,24 @@ export function BillOfSale(p: BillOfSaleProps) {
 
       {/* Signatures */}
       {p.seller.phone && (
-        <p className="mt-6 text-[9.5px] leading-snug text-gray-700 break-inside-avoid">{SMS_CONSENT}</p>
+        <p className="mt-3 text-[9px] leading-snug text-gray-700 break-inside-avoid">{SMS_CONSENT}</p>
       )}
-      <div className={`${p.seller.phone ? "mt-3" : "mt-8"} grid grid-cols-2 gap-10 break-inside-avoid`}>
+      <div className={`${p.seller.phone ? "mt-1" : "mt-5"} grid grid-cols-2 gap-10 break-inside-avoid`}>
         <div>
-          <div className="border-b border-gray-900 h-9" />
+          <div className="border-b border-gray-900 h-8" />
           <div className="mt-1 flex justify-between text-[10px] text-gray-600">
             <span>Seller Signature</span><span>Date</span>
           </div>
         </div>
         <div>
-          <div className="border-b border-gray-900 h-9 flex items-end pb-0.5">{p.buyerName || ""}</div>
+          <div className="border-b border-gray-900 h-8 flex items-end pb-0.5">{p.buyerName || ""}</div>
           <div className="mt-1 text-[10px] text-gray-600">Purchased by ({BUSINESS.name})</div>
         </div>
       </div>
 
       {/* Disclaimer #2 */}
       {FOOTER_DISCLAIMER.length > 0 && (
-        <div className="mt-5 text-[9.5px] leading-snug text-gray-700 space-y-1 break-inside-avoid">
+        <div className="mt-3 text-[8.5px] leading-snug text-gray-700 space-y-1 break-inside-avoid">
           {FOOTER_DISCLAIMER.map((t, n) => <p key={n}>{t}</p>)}
         </div>
       )}

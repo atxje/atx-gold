@@ -19,6 +19,7 @@ const LOCKS = {
   invoice: 730_102,
   memo: 730_103,
   itemCode: 730_104,
+  mix: 730_105,
 } as const
 
 async function lock(tx: Tx, id: number): Promise<void> {
@@ -67,6 +68,17 @@ export async function nextMemoNumber(tx: Tx): Promise<string> {
     FROM "Memo" WHERE "memoNumber" ~ ${pattern}`
   const max = Number(rows[0]?.max ?? 0)
   return `MEM-${pad(max + 1)}`
+}
+
+/** MIX-0001, MIX-0002, … — mix / split transfers between inventory items. */
+export async function nextMixNumber(tx: Tx): Promise<string> {
+  await lock(tx, LOCKS.mix)
+  const pattern = "^MIX-[0-9]+$"
+  const rows = await tx.$queryRaw<{ max: number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING("number" FROM '[0-9]+$') AS INTEGER)) AS "max"
+    FROM "MixTransfer" WHERE "number" ~ ${pattern}`
+  const max = Number(rows[0]?.max ?? 0)
+  return `MIX-${pad(max + 1)}`
 }
 
 /** Unique stock codes: D1000 (diamonds), J1000 (jewelry), W1000 (watches). */

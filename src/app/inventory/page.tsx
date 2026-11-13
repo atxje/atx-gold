@@ -404,7 +404,7 @@ export default function InventoryPage() {
                 </button>
                 <button onClick={() => navigate("/inventory/mix")}
                   className="px-3 py-2 bg-gray-600 text-white rounded-md text-sm font-medium hover:bg-gray-700">
-                  Mix / Transfer
+                  Mix / Split
                 </button>
                 <button onClick={() => setSelected(new Set())}
                   className="px-3 py-2 border border-gray-300 text-gray-600 rounded-md text-sm hover:bg-gray-50">
@@ -421,7 +421,7 @@ export default function InventoryPage() {
                     : "Fetch Spot Prices"}
                 </button>
                 <Link href="/inventory/mix" className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
-                  Mix / Transfer
+                  Mix / Split
                 </Link>
                 <Link href="/purchases/new" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
                   + Record Purchase

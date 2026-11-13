@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
+import Link from "next/link"
 import { Navbar } from "@/components/navbar"
 import { PageNav } from "@/components/page-nav"
 import { format } from "date-fns"
 import { formatPurchaseDate } from "@/lib/purchase-date"
 import { Select } from "@/components/select"
+import { ADJUSTMENT_REASONS, adjustmentReasonLabel } from "@/lib/inventory-adjustments"
 
 interface DiamondDetails {
   shape: string | null; caratWeight: number | null; color: string | null; clarity: string | null
@@ -38,6 +40,20 @@ interface InventoryItem {
   soldValue: number
   totalProfit: number
   status: "ON_STOCK" | "OUT_ON_MEMO"
+  quantity: number
+  // Admin-only: weight / quantity corrections with their reasons
+  adjustments?: {
+    id: string
+    createdAt: string
+    reason: string
+    note: string | null
+    weightBefore: number
+    weightAfter: number
+    quantityBefore: number
+    quantityAfter: number
+    totalCost: number
+    user: { name: string | null } | null
+  }[]
   diamondDetails: DiamondDetails | null
   jewelryDetails: JewelryDetails | null
   watchDetails: WatchDetails | null
@@ -74,6 +90,7 @@ interface InventoryItem {
     role: string
     mixTransfer: {
       id: string
+      number?: string | null
       createdAt: string
       items: {
         id: string
@@ -172,6 +189,15 @@ export default function InventoryItemPage() {
   const [filterType, setFilterType] = useState<TxType | "All" | "Transfer">("All")
 
   // Edit mode
+  const isAdmin = session?.user?.role === "ADMIN"
+  // Admin correction of on-hand weight / piece count, with a reason
+  const [adjusting, setAdjusting] = useState(false)
+  const [aWeight, setAWeight] = useState("")
+  const [aQty, setAQty] = useState("")
+  const [aReason, setAReason] = useState("")
+  const [aNote, setANote] = useState("")
+  const [aError, setAError] = useState("")
+  const [aSaving, setASaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [fWeight, setFWeight] = useState("")
@@ -226,11 +252,43 @@ export default function InventoryItemPage() {
     setEditing(true)
   }
 
+  function startAdjust() {
+    if (!item) return
+    setAWeight(String(Math.round((item.totalWeight - item.soldWeight) * 100000) / 100000))
+    setAQty(String(item.quantity ?? 0))
+    setAReason(""); setANote(""); setAError("")
+    setEditing(false)
+    setAdjusting(true)
+  }
+
+  async function saveAdjust() {
+    if (!item) return
+    setAError("")
+    if (!aReason) { setAError("Choose a reason"); return }
+    if (aReason === "OTHER" && !aNote.trim()) { setAError('Add a note explaining the "Other" reason'); return }
+    setASaving(true)
+    try {
+      const res = await fetch(`/api/inventory/${id}/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weight: parseFloat(aWeight), quantity: parseInt(aQty) || 0, reason: aReason, note: aNote }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setAError(data.error || "Couldn't save the adjustment"); return }
+      const full = await fetch(`/api/inventory/${id}`).then(r => r.json())
+      setItem(full)
+      setAdjusting(false)
+    } finally {
+      setASaving(false)
+    }
+  }
+
   async function saveEdit() {
     if (!item) return
     setSaving(true)
     try {
-      const payload: Record<string, unknown> = { totalWeight: fWeight, totalCost: fCost }
+      // Weight and cost are admin-only (the server ignores them from anyone else)
+      const payload: Record<string, unknown> = isAdmin ? { totalWeight: fWeight, totalCost: fCost } : {}
       if (item.jewelryDetails) {
         payload.jewelryData = {
           metal: strOrNull(fJewelry.metal), brand: strOrNull(fJewelry.brand), mainStone: strOrNull(fJewelry.mainStone),
@@ -322,7 +380,7 @@ export default function InventoryItemPage() {
         id: mx.id, date: mx.mixTransfer.createdAt, type: "Transfer",
         direction: isOut ? "OUT" : "IN",
         party: otherNames, partyId: otherId, partyRoute: otherId ? `/inventory/${otherId}` : "/inventory",
-        docNumber: "Transfer", docId: mx.mixTransfer.id, docRoute: `/inventory`,
+        docNumber: mx.mixTransfer.number || "Mix / Split", docId: mx.mixTransfer.id, docRoute: `/inventory/mix/${mx.mixTransfer.id}`,
         weight: mx.weight, amount: mx.totalCost, costPerUnit: cpu,
       })
     }
@@ -359,7 +417,11 @@ export default function InventoryItemPage() {
   if (!item) return <div className="min-h-screen bg-gray-50"><Navbar /><div className="text-center py-12 text-gray-500">Item not found.</div></div>
 
   const unit = unitLabels[item.weightUnit] || "g"
-  const avgPerUnit = item.totalWeight > 0 ? item.totalCost / item.totalWeight : 0
+  // Average cost of what's still on hand (sold weight has already left totalCost)
+  const onHand = Math.round((item.totalWeight - item.soldWeight) * 100000) / 100000
+  const avgPerUnit = onHand > 0 ? item.totalCost / onHand : 0
+  const aNewWeight = parseFloat(aWeight)
+  const aNewAvg = Number.isFinite(aNewWeight) && aNewWeight > 0 ? item.totalCost / aNewWeight : 0
   const totalIn = transactions.filter(t => t.direction === "IN").reduce((s, t) => s + t.weight, 0)
   const totalOut = transactions.filter(t => t.direction === "OUT").reduce((s, t) => s + t.weight, 0)
 
@@ -379,7 +441,21 @@ export default function InventoryItemPage() {
               <p className="text-sm text-gray-500 mt-1">{item.category.replace(/_/g, " ")} · {item.subcategory}</p>
             </div>
             <div className="flex items-center gap-2">
-              {!editing && (
+              {!adjusting && !editing && item.availableWeight > 0 && (
+                <Link href={`/inventory/mix?items=${item.id}`}
+                  title="Move part of this into another parcel, a new parcel, or a new individual piece"
+                  className="px-4 py-2 rounded-full text-sm font-medium bg-purple-50 text-purple-700 hover:bg-purple-100">
+                  Mix / Split
+                </Link>
+              )}
+              {isAdmin && !adjusting && !editing && (
+                <button onClick={startAdjust}
+                  title="Correct the weight or piece count (not gold, lost, mistake) — cost stays the same"
+                  className="px-4 py-2 rounded-full text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100">
+                  Adjust Weight / Qty
+                </button>
+              )}
+              {!editing && !adjusting && (
                 <button onClick={startEdit}
                   className="px-4 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200">
                   Edit
@@ -414,12 +490,100 @@ export default function InventoryItemPage() {
           </div>
         </div>
 
+        {/* Adjust panel (admin) */}
+        {adjusting && isAdmin && (
+          <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-red-300">
+            <h2 className="text-lg font-semibold text-gray-900">Adjust Weight / Quantity</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Enter what is actually on hand now. Total cost stays at ${item.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })},
+              so the average cost per {unit} changes. The adjustment is logged with your reason.
+            </p>
+            {aError && <div className="mb-3 bg-red-50 text-red-600 p-3 rounded text-sm">{aError}</div>}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className={labelClass}>On-hand weight ({unit})</label>
+                <input type="number" step="any" min="0" value={aWeight} onChange={e => setAWeight(e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-400 mt-1">Now: {onHand} {unit}</p>
+              </div>
+              <div>
+                <label className={labelClass}>Quantity (pieces)</label>
+                <input type="number" step="1" min="0" value={aQty} onChange={e => setAQty(e.target.value)} className={inputClass} />
+                <p className="text-xs text-gray-400 mt-1">Now: {item.quantity ?? 0}</p>
+              </div>
+              <div className="col-span-2">
+                <label className={labelClass}>Reason *</label>
+                <Select value={aReason} onChange={e => setAReason(e.target.value)} className={inputClass}>
+                  <option value="">Choose a reason…</option>
+                  {ADJUSTMENT_REASONS.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+                </Select>
+              </div>
+              <div className="col-span-2 sm:col-span-4">
+                <label className={labelClass}>Note {aReason === "OTHER" ? "*" : "(optional)"}</label>
+                <input value={aNote} onChange={e => setANote(e.target.value)} className={inputClass}
+                  placeholder="e.g. chain tested as plated, removed from parcel" />
+              </div>
+            </div>
+            <div className="text-sm text-gray-700 mb-4">
+              Average cost: <b>${avgPerUnit.toFixed(2)}/{unit}</b> → <b>${aNewAvg.toFixed(2)}/{unit}</b>
+              {Number.isFinite(aNewWeight) && (
+                <span className="ml-3 text-gray-500">
+                  Weight change: {aNewWeight - onHand >= 0 ? "+" : ""}{(Math.round((aNewWeight - onHand) * 100000) / 100000)} {unit}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveAdjust} disabled={aSaving}
+                className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                {aSaving ? "Saving..." : "Save Adjustment"}
+              </button>
+              <button onClick={() => setAdjusting(false)} disabled={aSaving}
+                className="px-4 py-2 border border-gray-300 text-gray-600 rounded text-sm hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Adjustment history (admin) */}
+        {isAdmin && item.adjustments && item.adjustments.length > 0 && (
+          <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
+            <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700">Adjustments</div>
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs font-medium text-gray-500 uppercase">
+                <tr>
+                  <th className="px-5 py-2">Date</th>
+                  <th className="px-3 py-2">By</th>
+                  <th className="px-3 py-2 text-right">Weight</th>
+                  <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2">Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {item.adjustments.map(a => (
+                  <tr key={a.id}>
+                    <td className="px-5 py-2 whitespace-nowrap text-gray-700">{format(new Date(a.createdAt), "MMM d, yyyy h:mm a")}</td>
+                    <td className="px-3 py-2 text-gray-700">{a.user?.name || "—"}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {a.weightBefore} → <b>{a.weightAfter}</b> {unit}
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {a.quantityBefore === a.quantityAfter ? a.quantityAfter : <>{a.quantityBefore} → <b>{a.quantityAfter}</b></>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {adjustmentReasonLabel(a.reason).replace(" (explain in the note)", "")}
+                      {a.note && <div className="text-xs text-gray-500">{a.note}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {/* Edit panel */}
         {editing && (
           <div className="bg-white rounded-lg shadow p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit Item</h2>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            {isAdmin && <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
               <div>
                 <label className={labelClass}>Total Weight ({unit})</label>
                 <input type="number" step="any" value={fWeight} onChange={e => setFWeight(e.target.value)} className={inputClass} />
@@ -428,7 +592,7 @@ export default function InventoryItemPage() {
                 <label className={labelClass}>Total Cost ($)</label>
                 <input type="number" step="any" value={fCost} onChange={e => setFCost(e.target.value)} className={inputClass} />
               </div>
-            </div>
+            </div>}
 
             {item.jewelryDetails && (
               <div className="border-t border-gray-100 pt-4 mb-4">

@@ -15,10 +15,18 @@ export async function GET(
   }
 
   const { id } = await params
+  const isAdmin = session.user.role === "ADMIN"
 
   const item = await prisma.inventoryItem.findUnique({
     where: { id },
     include: {
+      // Weight/quantity corrections and their reasons — admins only
+      ...(isAdmin && {
+        adjustments: {
+          include: { user: { select: { name: true } } },
+          orderBy: { createdAt: "desc" as const },
+        },
+      }),
       diamondDetails: true,
       jewelryDetails: true,
       watchDetails: true,
@@ -41,6 +49,7 @@ export async function GET(
         },
       },
       mixTransferItems: {
+        where: { mixTransfer: { reversedAt: null } },
         include: {
           mixTransfer: {
             include: {
@@ -76,7 +85,11 @@ export async function PATCH(
 
   const { id } = await params
   const body = await request.json()
-  const { status, askingPrice, totalWeight, totalCost, diamondData, jewelryData, watchData } = body
+  const { status, askingPrice, diamondData, jewelryData, watchData } = body
+  // Changing an item's weight or cost is an admin action
+  const canEditTotals = session.user.role === "ADMIN"
+  const totalWeight = canEditTotals ? body.totalWeight : undefined
+  const totalCost = canEditTotals ? body.totalCost : undefined
 
   const current = await prisma.inventoryItem.findUnique({ where: { id } })
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 })

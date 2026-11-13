@@ -77,6 +77,7 @@ model User {
   appointments Appointment[]
   purchases    Purchase[]
   quickTickets QuickTicket[]
+  inventoryAdjustments InventoryAdjustment[]
 }
 
 enum LeadSource {
@@ -194,6 +195,7 @@ model InventoryItem {
   invoiceItems     InvoiceItem[]
   memoItems        MemoItem[]
   mixTransferItems MixTransferItem[]
+  adjustments      InventoryAdjustment[]
   diamondDetails   DiamondDetails?
   jewelryDetails   JewelryDetails?
   watchDetails     WatchDetails?
@@ -262,11 +264,17 @@ model WatchDetails {
   updatedAt DateTime @updatedAt
 }
 
+// Mix / split: part of one or more parcels moved into another parcel, a new
+// parcel, or a new individual piece — weight, pieces and cost move together.
 model MixTransfer {
-  id        String            @id @default(cuid())
-  createdAt DateTime          @default(now())
-  note      String?
-  items     MixTransferItem[]
+  id           String            @id @default(cuid())
+  number       String?           @unique // MIX-0001 (older transfers have none)
+  createdAt    DateTime          @default(now())
+  note         String?
+  userId       String?
+  reversedAt   DateTime?         // set when the transfer was undone
+  reversedById String?
+  items        MixTransferItem[]
 }
 
 model MixTransferItem {
@@ -274,6 +282,7 @@ model MixTransferItem {
   mixTransferId   String
   inventoryItemId String
   weight          Float
+  quantity        Int           @default(0) // pieces moved
   totalCost       Float
   role            String        // "SOURCE" or "DEST"
 
@@ -449,6 +458,28 @@ model BuyingGuidelines {
   maxUnderSpotSilverJunk    Float    @default(15)   // junk/90% silver (Peace/Morgan, US 90%/40%): flag if paid > (spot − this) per fine ozt
   updatedAt                 DateTime @updatedAt
   updatedBy                 String?
+}
+
+// Admin correction of an item's on-hand weight / piece count (not gold, lost,
+// weighing or entry mistake). Total cost is left alone, so average cost moves.
+model InventoryAdjustment {
+  id              String   @id @default(cuid())
+  inventoryItemId String
+  userId          String
+  reason          String   // code from ADJUSTMENT_REASONS
+  note            String?  @db.Text
+  weightBefore    Float    // on-hand weight before / after
+  weightAfter     Float
+  quantityBefore  Int
+  quantityAfter   Int
+  totalCost       Float    // item's total cost at the time (unchanged by the adjustment)
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([inventoryItemId])
 }
 
 // Singleton row: automatic text messages (admin-only settings)

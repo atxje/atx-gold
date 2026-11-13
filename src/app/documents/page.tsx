@@ -41,7 +41,20 @@ interface Purchase {
   lead: { id: string; name: string }
 }
 
-type Tab = "invoices" | "transfers" | "memos" | "purchases"
+type Tab = "invoices" | "transfers" | "memos" | "purchases" | "mixes"
+
+interface MixDoc {
+  id: string
+  number: string | null
+  createdAt: string
+  note: string | null
+  reversedAt: string | null
+  items: { role: string; weight: number; totalCost: number; inventoryItem: { name: string; weightUnit: string } }[]
+}
+
+const TAB_LABELS: Record<Tab, string> = {
+  invoices: "Invoices", transfers: "Transfers", memos: "Memos", purchases: "Purchases", mixes: "Mix / Split",
+}
 
 const memoStatusColors: Record<string, string> = {
   ACTIVE: "bg-blue-100 text-blue-800",
@@ -57,6 +70,7 @@ export default function DocumentsPage() {
   const [transfers, setTransfers] = useState<Invoice[]>([])
   const [memos, setMemos] = useState<Memo[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
+  const [mixes, setMixes] = useState<MixDoc[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -71,7 +85,9 @@ export default function DocumentsPage() {
       fetch("/api/invoices?type=TRANSFER").then(r => r.ok ? r.json() : []),
       fetch("/api/memos").then(r => r.ok ? r.json() : []),
       fetch("/api/purchases").then(r => r.ok ? r.json() : []),
-    ]).then(([inv, trn, mem, pur]) => {
+      fetch("/api/inventory/mix").then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([inv, trn, mem, pur, mix]) => {
+      setMixes(Array.isArray(mix) ? mix : [])
       setInvoices(Array.isArray(inv) ? inv : [])
       setTransfers(Array.isArray(trn) ? trn : [])
       setMemos(Array.isArray(mem) ? mem : [])
@@ -111,7 +127,7 @@ export default function DocumentsPage() {
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="flex gap-6">
-            {(["invoices", "transfers", "memos", "purchases"] as Tab[]).map(t => (
+            {(["invoices", "transfers", "memos", "purchases", "mixes"] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -121,7 +137,7 @@ export default function DocumentsPage() {
                     : "border-transparent text-gray-500 hover:text-gray-700"
                 }`}
               >
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {TAB_LABELS[t]}
               </button>
             ))}
           </nav>
@@ -195,6 +211,51 @@ export default function DocumentsPage() {
                           <td className="px-6 py-4 text-sm font-bold text-purple-600 text-right">${trn.totalAmount.toFixed(2)}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+
+            {/* Mix / Split Tab */}
+            {tab === "mixes" && (
+              mixes.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  No mix / split transfers yet.{" "}
+                  <Link href="/inventory/mix" className="text-purple-600 hover:underline">Move part of a parcel</Link>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mix #</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">From</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Into</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {mixes.map(mx => {
+                        const from = mx.items.filter(i => i.role === "SOURCE")
+                        const into = mx.items.filter(i => i.role === "DEST")
+                        const unit = ({ GRAM: "g", TROY_OZ: "ozt", CARAT: "ct" } as Record<string, string>)[into[0]?.inventoryItem.weightUnit ?? "GRAM"] || "g"
+                        return (
+                          <tr key={mx.id} className={`hover:bg-gray-50 cursor-pointer ${mx.reversedAt ? "opacity-50" : ""}`} onClick={() => router.push(`/inventory/mix/${mx.id}`)}>
+                            <td className="px-6 py-4 text-sm font-semibold text-purple-600">
+                              {mx.number || "—"}
+                              {mx.reversedAt && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">Reversed</span>}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{format(new Date(mx.createdAt), "MMM d, yyyy")}</td>
+                            <td className="px-6 py-4 text-sm text-gray-900">{from.map(i => i.inventoryItem.name).join(", ") || "—"}</td>
+                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{into.map(i => i.inventoryItem.name).join(", ") || "—"}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500 text-right">{into.reduce((a, i) => a + i.weight, 0).toFixed(3)} {unit}</td>
+                            <td className="px-6 py-4 text-sm font-bold text-purple-600 text-right">${into.reduce((a, i) => a + i.totalCost, 0).toFixed(2)}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>

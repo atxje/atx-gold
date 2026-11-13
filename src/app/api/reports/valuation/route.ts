@@ -62,10 +62,12 @@ export async function GET(request: Request) {
 
   // 2. Mix/transfers up to asOf
   const mixItems = await prisma.mixTransferItem.findMany({
-    include: { mixTransfer: { select: { createdAt: true } } },
+    include: { mixTransfer: { select: { createdAt: true, reversedAt: true } } },
   })
   for (const mi of mixItems) {
     if (mi.mixTransfer.createdAt > asOf) continue
+    // A transfer that was undone by that date no longer counts
+    if (mi.mixTransfer.reversedAt && mi.mixTransfer.reversedAt <= asOf) continue
     const s = state.get(mi.inventoryItemId)
     if (!s) continue
     if (mi.role === "SOURCE") {
@@ -77,6 +79,18 @@ export async function GET(request: Request) {
       s.availableWeight += mi.weight
       s.totalCost += mi.totalCost
     }
+  }
+
+  // 2b. Admin weight corrections up to asOf (cost is unchanged by these)
+  const adjustments = await prisma.inventoryAdjustment.findMany({
+    where: { createdAt: { lte: asOf } },
+    select: { inventoryItemId: true, weightBefore: true, weightAfter: true },
+  })
+  for (const a of adjustments) {
+    const s = state.get(a.inventoryItemId)
+    if (!s) continue
+    s.totalWeight += a.weightAfter - a.weightBefore
+    s.availableWeight += a.weightAfter - a.weightBefore
   }
 
   // 3. Invoices up to asOf

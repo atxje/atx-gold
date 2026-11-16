@@ -5,24 +5,10 @@ import { nextPurchaseNumber, TX_OPTIONS } from "@/lib/doc-numbers"
 import { parsePurchaseDate } from "@/lib/purchase-date"
 import { resolveSeller, SellerError } from "@/lib/seller-fields"
 import { scheduleReviewRequest, requestOrigin } from "@/lib/review-requests"
+import { parseTicketBody, paymentJson } from "@/lib/quick-tickets"
 
 // Quick tickets: the short bill of sale signed at the desk; completed later
 // into a full purchase under the same PUR number.
-
-export interface TicketLine {
-  categoryId: string | null
-  category: string
-  type: string | null
-  quantity: number | null
-  weight: number | null
-  weightUnit: string
-  description: string | null
-}
-
-const num = (v: unknown) => {
-  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""))
-  return Number.isFinite(n) ? n : null
-}
 
 // GET /api/quick-tickets?status=OPEN
 export async function GET(request: Request) {
@@ -48,39 +34,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const lines: TicketLine[] = (Array.isArray(body.lines) ? body.lines : [])
-      .filter((l: Record<string, unknown>) => l && typeof l.category === "string" && l.category.trim())
-      .map((l: Record<string, unknown>) => ({
-        categoryId: typeof l.categoryId === "string" ? l.categoryId : null,
-        category: String(l.category).trim(),
-        type: typeof l.type === "string" && l.type.trim() ? l.type.trim() : null,
-        quantity: num(l.quantity) && num(l.quantity)! > 0 ? Math.round(num(l.quantity)!) : null,
-        weight: num(l.weight) && num(l.weight)! > 0 ? num(l.weight) : null,
-        weightUnit: typeof l.weightUnit === "string" ? l.weightUnit : "GRAM",
-        description: typeof l.description === "string" && l.description.trim() ? l.description.trim() : null,
-      }))
-    if (lines.length === 0) return NextResponse.json({ error: "Add at least one item" }, { status: 400 })
-
-    // Amounts: either one per category (total = their sum) or none, with just
-    // a grand total. Categories without an amount are stored as null.
-    const cats = [...new Set(lines.map(l => l.category))]
-    const given: Record<string, number> = {}
-    for (const t of Array.isArray(body.categoryTotals) ? body.categoryTotals : []) {
-      const a = num(t?.amount)
-      if (typeof t?.category === "string" && a != null && a > 0) given[t.category] = a
-    }
-    if (Object.values(given).some(a => a < 0)) {
-      return NextResponse.json({ error: "Amounts can't be negative" }, { status: 400 })
-    }
-    const anyGiven = cats.some(c => given[c] != null)
-    if (anyGiven && cats.some(c => given[c] == null)) {
-      return NextResponse.json({ error: "Enter an amount for every category, or none and just the total" }, { status: 400 })
-    }
-    const categoryTotals = cats.map(c => ({ category: c, amount: anyGiven ? given[c] : null }))
-    const total = anyGiven
-      ? Math.round(cats.reduce((s, c) => s + given[c], 0) * 100) / 100
-      : Math.round((num(body.total) ?? 0) * 100) / 100
-    if (!(total > 0)) return NextResponse.json({ error: "Enter the total paid" }, { status: 400 })
+    const parsed = parseTicketBody(body)
+    if (parsed.error !== undefined) return NextResponse.json({ error: parsed.error }, { status: 400 })
+    const { lines, categoryTotals, total } = parsed
 
     const userId = session.user.id
     const ticket = await prisma.$transaction(async (tx) => {
@@ -95,7 +51,7 @@ export async function POST(request: Request) {
           lines: lines as unknown as object,
           categoryTotals,
           total,
-          paymentMethod: Array.isArray(body.paymentMethod) && body.paymentMethod.length ? JSON.stringify(body.paymentMethod) : null,
+          paymentMethod: paymentJson(body),
           notes: typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null,
         },
       })

@@ -99,6 +99,10 @@ export default function QuickTicketViewPage() {
                   {deleting ? "Deleting…" : "Delete"}
                 </button>
               )}
+              {ticket.status === "OPEN" && isAdmin && (
+                <Link href={`/purchases/quick?edit=${ticket.id}`}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Edit</Link>
+              )}
               <button onClick={() => window.print()}
                 className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Print</button>
               {ticket.status === "OPEN" ? (

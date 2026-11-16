@@ -7,7 +7,7 @@ import { Navbar } from "@/components/navbar"
 import { PageNav } from "@/components/page-nav"
 import { Select } from "@/components/select"
 import { ScanIdButton, type ScannedId } from "@/components/scan-id-button"
-import { todayInputValue } from "@/lib/purchase-date"
+import { todayInputValue, purchaseDateKey } from "@/lib/purchase-date"
 import { coinNetOzt } from "@/lib/coins"
 
 // Quick Ticket — the fast version used with the customer at the desk:
@@ -67,6 +67,16 @@ export default function QuickTicketPage() {
   const [sendReview, setSendReview] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  // Editing an open ticket (?edit=<id>, admins): same form, saved over the same PUR number
+  const [editId, setEditId] = useState("")
+  const [editNumber, setEditNumber] = useState("")
+  const [editTicket, setEditTicket] = useState<{
+    purchaseDate: string; total: number; paymentMethod: string | null; notes: string | null
+    lead: { id: string }
+    lines: { categoryId: string | null; category: string; type: string | null; quantity?: number | null; weight: number | null; description: string | null }[]
+    categoryTotals: { category: string; amount: number | null }[]
+  } | null>(null)
+  const editFilled = useRef(false)
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login") }, [status, router])
 
@@ -79,9 +89,52 @@ export default function QuickTicketPage() {
 
   // Opened from a lead's page (?leadId=…): start with that seller selected
   useEffect(() => {
-    const preselected = new URLSearchParams(window.location.search).get("leadId")
+    const q = new URLSearchParams(window.location.search)
+    const preselected = q.get("leadId")
     if (preselected) { setIsNew(false); setLeadId(preselected) }
+    const edit = q.get("edit")
+    if (edit) setEditId(edit)
   }, [])
+
+  // Editing: load the ticket…
+  useEffect(() => {
+    if (!session || !editId) return
+    fetch(`/api/quick-tickets/${editId}`).then(async r => {
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) return setError(d.error || "Ticket not found")
+      if (d.status !== "OPEN") return setError("This ticket is already a completed purchase — edit the purchase instead.")
+      setEditNumber(d.purchaseNumber)
+      setEditTicket(d)
+    })
+  }, [session, editId])
+
+  // …and fill the form with it once the categories are loaded too
+  useEffect(() => {
+    if (!editTicket || categories.length === 0 || editFilled.current) return
+    editFilled.current = true
+    const idOf = (categoryId: string | null, name: string) =>
+      categories.find(c => c.id === categoryId)?.id || categories.find(c => c.name === name)?.id || ""
+    setIsNew(false); setLeadId(editTicket.lead.id)
+    setDate(purchaseDateKey(editTicket.purchaseDate))
+    const filled: Line[] = editTicket.lines.map(l => ({
+      key: keySeq++, categoryId: idOf(l.categoryId, l.category), type: l.type || "",
+      quantity: l.quantity ? String(l.quantity) : "", weight: l.weight ? String(l.weight) : "",
+      description: l.description || "",
+    })).filter(l => l.categoryId)
+    setLines([...filled, blankLine()])
+    const amounts: Record<string, string> = {}
+    for (const t of editTicket.categoryTotals) {
+      const cid = idOf(null, t.category)
+      if (cid && t.amount != null) amounts[cid] = String(t.amount)
+    }
+    setCatAmounts(amounts)
+    setGrandTotal(Object.keys(amounts).length ? "" : String(editTicket.total))
+    try {
+      const pm = editTicket.paymentMethod ? JSON.parse(editTicket.paymentMethod) as { method: string; amount: number }[] : []
+      setPayments(pm.map(x => ({ method: x.method, amount: String(x.amount), auto: pm.length === 1 })))
+    } catch { /* leave payments empty */ }
+    setNotes(editTicket.notes || "")
+  }, [editTicket, categories])
 
   // Existing seller picked → fill in what's on file
   useEffect(() => {
@@ -192,17 +245,18 @@ export default function QuickTicketPage() {
     if (payments.length && Math.abs(paidTotal - total) > 0.005 &&
         !confirm(`Payments add up to $${paidTotal.toFixed(2)} but the total is $${total.toFixed(2)}. Save anyway?`)) return
 
+    if (editId && !editFilled.current) return setError("The ticket hasn't finished loading — try again in a moment")
     setSaving(true)
     try {
-      const res = await fetch("/api/quick-tickets", {
-        method: "POST",
+      const res = await fetch(editId ? `/api/quick-tickets/${editId}` : "/api/quick-tickets", {
+        method: editId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(isNew ? { newLead: { name: name.trim(), phone, email, source, channel } } : { leadId }),
           seller: { address, idNumber, phone, email, source, channel },
           purchaseDate: date,
           notes,
-          ...(reviewOn && { sendReviewRequest: sendReview }),
+          ...(reviewOn && !editId && { sendReviewRequest: sendReview }),
           lines: filled.map(l => {
             const c = catById[l.categoryId]
             return {
@@ -235,8 +289,12 @@ export default function QuickTicketPage() {
         <div className="flex items-end justify-between">
           <div>
             <PageNav back className="mb-2" links={[{ label: "Purchases", href: "/purchases" }, { label: "Stock Documents", href: "/documents" }]} />
-            <h1 className="text-2xl font-bold text-gray-900 mt-1">Quick Ticket</h1>
-            <p className="text-sm text-gray-500">For the customer to sign now — complete the full purchase later from <b>To Finish</b>.</p>
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">{editId ? `Edit Quick Ticket ${editNumber}` : "Quick Ticket"}</h1>
+            <p className="text-sm text-gray-500">
+              {editId
+                ? <>Correct the ticket and save — it keeps the same number, and you can reprint it for a new signature.</>
+                : <>For the customer to sign now — complete the full purchase later from <b>To Finish</b>.</>}
+            </p>
           </div>
         </div>
 
@@ -408,7 +466,7 @@ export default function QuickTicketPage() {
           </div>
         </section>
 
-        {reviewOn && (
+        {reviewOn && !editId && (
           <label className="flex items-center justify-end gap-2 text-sm text-gray-700 cursor-pointer">
             <input type="checkbox" checked={sendReview} onChange={e => setSendReview(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
@@ -421,7 +479,7 @@ export default function QuickTicketPage() {
             className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
           <button type="button" onClick={save} disabled={saving}
             className="px-5 py-2 bg-amber-600 text-white rounded-md text-sm font-semibold hover:bg-amber-700 disabled:opacity-50">
-            {saving ? "Saving…" : "Save & Print for Signature"}
+            {saving ? "Saving…" : editId ? "Save Changes & Reprint" : "Save & Print for Signature"}
           </button>
         </div>
       </main>
